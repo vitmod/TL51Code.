@@ -1,0 +1,11 @@
+--- Am-NuPlayer/AmNuPlayerDecoder.cpp	(revision 2528)
++++ Am-NuPlayer/AmNuPlayerDecoder.cpp	(revision 2527)
+@@ -675,7 +675,7 @@
+         }
+ 
+         dropAccessUnit = false;
+-#if 1
++#if 0
+         if (!mIsAudio
+                 && !mIsSecure
+                 && mRenderer->getVideoLateByUs() > 100000ll

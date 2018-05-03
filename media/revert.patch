@@ -1,0 +1,97 @@
+Index: Am-NuPlayer/AmNuPlayerDecoder.cpp
+===================================================================
+--- Am-NuPlayer/AmNuPlayerDecoder.cpp	(revision 2528)
++++ Am-NuPlayer/AmNuPlayerDecoder.cpp	(revision 2527)
+@@ -675,7 +675,7 @@
+         }
+ 
+         dropAccessUnit = false;
+-#if 1
++#if 0
+         if (!mIsAudio
+                 && !mIsSecure
+                 && mRenderer->getVideoLateByUs() > 100000ll
+Index: Am-NuPlayer/AmNuPlayerRenderer.cpp
+===================================================================
+--- Am-NuPlayer/AmNuPlayerRenderer.cpp	(revision 2528)
++++ Am-NuPlayer/AmNuPlayerRenderer.cpp	(revision 2527)
+@@ -875,21 +875,14 @@
+     if (mDrainVideoQueuePending
+             || mSyncQueues
+             || (mPaused && mVideoSampleReceived)) {
+-         ALOGI("postDrainVideoQueue_l  Pending:%d mSyncQueues:%d mPaused:%d mVideoSampleReceived:%d\n",
+-		 	mDrainVideoQueuePending,
+-		 	mSyncQueues,
+-		 	mPaused,
+-		 	mVideoSampleReceived);
+         return;
+     }
+ 
+     if (mVideoQueue.empty()) {
+-		 ALOGI("postDrainVideoQueue_l  mVideoQueue.empty()\n");
+         return;
+     }
+ 
+     if (mHasAudio && !mAudioEOS && mAudioQueue.empty()) {
+-		ALOGI("postDrainVideoQueue_l  mHasAudio && !mAudioEOS && mAudioQueue.empty() \n");
+         return;
+     }
+ 
+@@ -946,7 +939,7 @@
+             mSmootOutNum = 0;
+             msg->post(postDelayUs);
+             //mVideoScheduler->restart();
+-            ALOGI("possible video time jump of %dms, retrying in %dms",
++            PTS_LOG("possible video time jump of %dms, retrying in %dms",
+                (int)(delayUs / 1000), (int)(postDelayUs / 1000));
+             return;
+         }
+@@ -979,14 +972,12 @@
+ 
+     // post 2 display refreshes before rendering is due
+     mDrainVideoQueuePending = true;
+-	ALOGI("postDrainVideoQueue_l post:%lld \n",delayUs);
+     msg->post(delayUs > 0 ? delayUs : 0 );
+ 
+ }
+ 
+ void AmNuPlayer::Renderer::onDrainVideoQueue() {
+     if (mVideoQueue.empty()) {
+-		 ALOGI("onDrainVideoQueue  entry->mBuffer == NULL\n");
+         return;
+     }
+ 
+@@ -1001,7 +992,6 @@
+         entry = NULL;
+ 
+         setVideoLateByUs(0);
+-		 ALOGI("onDrainVideoQueue  entry->mBuffer == NULL\n");
+         return;
+     }
+ 
+@@ -1029,12 +1019,9 @@
+         tooLate = (mVideoLateByUs > 40000);
+ 
+         if (tooLate) {
+-            ALOGI("video late by %lld us (%.2f secs)",
++            ALOGV("video late by %lld us (%.2f secs)",
+                  mVideoLateByUs, mVideoLateByUs / 1E6);
+         }
+-		//else {
+-		//	ALOGI("late = %lld nowUs:%lld realTimeUs:%lld\n",tooLate,nowUs,realTimeUs);
+-        //}
+         /* else {
+             if (mDebug) {
+                 ALOGI("[video] rendering at media time %lld us",
+@@ -1060,9 +1047,9 @@
+             mTotalAudioJumpedTimeUs = 0;
+         }
+     }
+-    ALOGI("onDrainVideoQueue  render :%lld \n",nowUs * 1000ll);
++
+     entry->mNotifyConsumed->setInt64("timestampNs", nowUs * 1000ll);
+-    entry->mNotifyConsumed->setInt32("render", !tooLate); // render anyhow
++    entry->mNotifyConsumed->setInt32("render", 1); // render anyhow
+     entry->mNotifyConsumed->post();
+     mVideoQueue.erase(mVideoQueue.begin());
+     entry = NULL;
