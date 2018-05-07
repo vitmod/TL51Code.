@@ -1180,9 +1180,13 @@ int AmlogicPlayer::UpdateProcess(int pid, player_info_t *info)
     } else if (info->status == PLAYER_INITOK) {
         updateMediaInfo();
         if (info->full_time_ms != -1) {
+			LOGV("PLAYER_INITOK mDuration =%d line=%d\n",mDuration,__LINE__);
             mDuration = info->full_time_ms;
+			LOGV("PLAYER_INITOK mDuration =%d line=%d\n",mDuration,__LINE__);
         } else if (info->full_time != -1) {
+			LOGV("PLAYER_INITOK mDuration =%d line=%d\n",mDuration,__LINE__);
             mDuration = info->full_time * 1000;
+			LOGV("PLAYER_INITOK mDuration =%d line=%d\n",mDuration,__LINE__);
         }
         /*if (video_rotation_degree == 1 || video_rotation_degree == 3) {
             sendEvent(MEDIA_SET_VIDEO_SIZE, mHeight, mWidth);    // 90du,or 270du
@@ -3269,9 +3273,11 @@ status_t AmlogicPlayer::getDuration(int* duration)
     Mutex::Autolock autoLock(mMutex);
     LOGV("getDuration\n");
     if (mDuration <= 0) {
+		LOGV("PLAYER_INITOK mDuration =%d line=%d\n",mDuration,__LINE__);
         *duration = -1;
     } else {
         *duration = mDuration;
+		LOGV("PLAYER_INITOK mDuration =%d line=%d\n",mDuration,__LINE__);
     }
     return NO_ERROR;
 }
