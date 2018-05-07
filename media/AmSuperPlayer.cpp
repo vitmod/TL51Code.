@@ -325,9 +325,13 @@ status_t    AmSuperPlayer::getDuration(int* msec)
 	TRACE();
 	Mutex::Autolock l(mMutex);
 	TRACE();
-	if (mPlayer == 0)// return UNKNOWN_ERROR;
+	if (mPlayer == 0) {
+		TRACE();// return UNKNOWN_ERROR;
 		return 0;
-	return mPlayer->getDuration(msec);		
+	}
+	int ret=mPlayer->getDuration(msec);
+	LOGV("get Duration =%d ret=\n",*msec,ret);
+	return ret;		
 }
 status_t    AmSuperPlayer::release()
 {
