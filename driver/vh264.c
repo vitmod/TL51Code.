@@ -827,7 +827,6 @@ static void set_frame_info(struct vframe_s *vf)
 	vf->width = frame_width;
 	vf->height = frame_height;
 	vf->duration = frame_dur;
-	pr_info("set_frame_info vf->duration=%d \n",frame_dur);
 	vf->ratio_control =
 		(min(h264_ar, (u32) DISP_RATIO_ASPECT_RATIO_MAX)) <<
 		DISP_RATIO_ASPECT_RATIO_BIT;
@@ -2136,9 +2135,7 @@ static void vh264_isr(void)
 					vf->flag |= VFRAME_FLAG_HIGH_BANDWITH;
 				if (force_interlaced_frame)
 					vf->flag |= VFRAME_FLAG_FORCE_DI;
-				pr_info("1 vf->duration =%d \n",vf->duration);
 				vf->duration >>= 1;
-				pr_info("11 vf->duration =%d \n",vf->duration);
 				vf->duration_pulldown = 0;
 				vf->signal_type = video_signal_from_vui;
 				vf->index = buffer_index;
@@ -2193,9 +2190,7 @@ static void vh264_isr(void)
 				}
 
 				vf->type |= VIDTYPE_VIU_NV21;
-				pr_info("2 vf->duration =%d \n",vf->duration);
 				vf->duration >>= 1;
-				pr_info("22 vf->duration =%d \n",vf->duration);
 				vf->duration_pulldown = 0;
 				vf->signal_type = video_signal_from_vui;
 				vf->index = buffer_index;
