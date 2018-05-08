@@ -55,9 +55,9 @@ Can seek back size:
 	min(valid_data_size-valid_data_too_read,data between buffe,rp)
 
 */
-//#define LP_BUFFER_DEBUG
+#define LP_BUFFER_DEBUG
 #define LP_SK_DEBUG
-//#define LP_RD_DEBUG
+#define LP_RD_DEBUG
 
 #define lp_print(level,fmt...) av_log(NULL,level,##fmt)
 
@@ -340,6 +340,8 @@ int url_lpread(URLContext *s,unsigned char * buf,int size)
 			if(rlen<=0)
 				{
 				lp_unlock(&lp->mutex);
+				lp_rprint(AV_LOG_INFO, "url_lpread:size=%d,len=%d,rlen=%d \n",
+				size,len,rlen);
 				return ((size-len)>0)?(size-len):rlen;
 				}
 			lp_lock(&lp->mutex);
@@ -364,6 +366,7 @@ int url_lpread(URLContext *s,unsigned char * buf,int size)
 	lp_unlock(&lp->mutex);
 	return (size-len);
 }
+
 
 int64_t url_lpseek(URLContext *s, int64_t offset, int whence)
 {
@@ -469,6 +472,7 @@ int64_t url_lpseek(URLContext *s, int64_t offset, int whence)
 	{/*seek to buffer end,but buffer is not full,do read seek*/
 		int read_offset,ret;
 		lp_sprint( AV_LOG_INFO, "url_lpseek:buffer read seek forward offset=%lld offset1=%lld  whence=%d\n",offset,offset1,whence);
+		lp_sprint( AV_LOG_INFO, "url_lpseek:lp->seekflags=%d lp->max_read_seek=%d \n",lp->seekflags,lp->max_read_seek);
 		lp->rp+=valid_data_can_seek_forward;
 		if(lp->rp>=lp->buffer_end)
 			lp->rp-=lp->buffer_size;
@@ -480,6 +484,7 @@ int64_t url_lpseek(URLContext *s, int64_t offset, int whence)
 				read_offset-=ret;
 			else if(ret!=AVERROR(EAGAIN)){
 				offset=ret;/*get error,exit now*/
+				lp_sprint( AV_LOG_INFO, "url_lpseek:url_lpread ret=%d \n",ret);
 				break;
 			}
 		}
