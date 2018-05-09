@@ -1796,7 +1796,11 @@ int time_search(play_para_t *am_p, int flags)
                 && am_p->stream_type != STREAM_ES) {
                 offset = ((int64_t)(time_point * (s->bit_rate >> 3)));
                 ret = url_fseek(s->pb, offset, SEEK_SET);
-
+                if(ret == AVERROR(EINTR)) {
+					log_print("network down, return ok \n");
+					ret = PLAYER_SUCCESS;
+					goto searchexit;
+				}
                 if (ret < 0) {
                     log_info("%s: could not seek to position 0x%llx  ret=0x%llx\n", s->filename, offset, ret);
                     ret = PLAYER_SEEK_FAILED;
@@ -2050,7 +2054,11 @@ int time_search(play_para_t *am_p, int flags)
             }
 
             ret = url_fseek(s->pb, offset, SEEK_SET);
-
+            if(ret == AVERROR(EINTR)) {
+                 log_print("network down, return ok \n");
+                 ret = PLAYER_SUCCESS;
+                 goto searchexit;
+            }
             if (ret < 0) {
                 log_info("%s: could not seek to position 0x%llx  ret=0x%llx\n", s->filename, offset, ret);
                 ret = PLAYER_SEEK_FAILED;
