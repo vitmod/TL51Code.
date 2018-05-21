@@ -3068,6 +3068,7 @@ static void av_estimate_timeings_chapters(AVFormatContext *ic, int64_t old_offse
     ic->cur_st = NULL;
     /* flush packet queue */
     flush_packet_queue(ic);
+    av_log(NULL, AV_LOG_INFO, "[%s:%d]old_offset=%lld\n",__FUNCTION__, __LINE__,old_offset);
     for (i = 0; i < ic->nb_streams; i++)
     {
         last_pts[i] = AV_NOPTS_VALUE;
@@ -3112,6 +3113,7 @@ static void av_estimate_timeings_chapters(AVFormatContext *ic, int64_t old_offse
             do
             {
                 ret = av_read_packet(ic, pkt);
+                av_log(NULL, AV_LOG_INFO, "[%s:%d]ret=%lld AVERROR(EAGAIN)=%lld\n",__FUNCTION__, __LINE__,ret,AVERROR(EAGAIN));
             }
             while (ret == AVERROR(EAGAIN));
             if (ret != 0)
@@ -3202,6 +3204,7 @@ static void av_estimate_timeings_chapters(AVFormatContext *ic, int64_t old_offse
             }
             av_free_packet(pkt);
         }
+        av_log(NULL, AV_LOG_INFO, "[%s:%d]valid_offset=%lld retry=%lld\n",__FUNCTION__, __LINE__,valid_offset,retry);
     }
     while (end_time == AV_NOPTS_VALUE
             && valid_offset > (DURATION_MAX_READ_SIZE << retry)
@@ -3276,7 +3279,7 @@ static void av_estimate_timings_from_pts(AVFormatContext *ic, int64_t old_offset
         offset = valid_offset - (estimate_size << retry);
         if (offset < 0)
             offset = 0;
-        //av_log(NULL,AV_LOG_INFO, "[%s:%d]offset=%llx valid_offset=%llx \n", __FUNCTION__, __LINE__, offset, valid_offset);
+        av_log(NULL,AV_LOG_INFO, "[%s:%d]offset=%llx valid_offset=%llx \n", __FUNCTION__, __LINE__, offset, valid_offset);
         avio_seek(ic->pb, offset, SEEK_SET);
         read_size = 0;
         for (;;)
@@ -3324,7 +3327,7 @@ static void av_estimate_timings_from_pts(AVFormatContext *ic, int64_t old_offset
             }
             av_free_packet(pkt);
         }
-        // av_log(NULL, AV_LOG_INFO, "[%s:%d] endtime=0x%llx retry=%d\n",__FUNCTION__, __LINE__,end_time , retry);
+        av_log(NULL, AV_LOG_INFO, "[%s:%d] endtime=0x%llx retry=%d\n",__FUNCTION__, __LINE__,end_time , retry);
     }
     while (end_time == AV_NOPTS_VALUE
             && valid_offset > (estimate_size << retry)
@@ -3400,6 +3403,7 @@ static int av_estimate_timings(AVFormatContext *ic, int64_t old_offset)
     }
     avio_seek(ic->pb, cur_offset, SEEK_SET);
     av_log(NULL, AV_LOG_INFO, "[%s:%d]file_size=%lld valid_offset=%llx\n", __FUNCTION__, __LINE__, ic->file_size, ic->valid_offset);
+    av_log(NULL, AV_LOG_INFO, "[%s:%d]iformat->name=%s\n",__FUNCTION__, __LINE__,ic->iformat->name);
     if ((!strcmp(ic->iformat->name, "mpeg") ||
             !strcmp(ic->iformat->name, "mpegts")) &&
             file_size > 0 && ic->pb->seekable /*&& !ic->pb->is_slowmedia*/ && !ic->pb->is_streamed)
@@ -4308,6 +4312,7 @@ int av_find_stream_info(AVFormatContext *ic)
         }
     }
     ret = av_estimate_timings(ic, old_offset);
+    av_log(NULL, AV_LOG_INFO, "[%s:%d]av_estimate_timings=%lld\n",__FUNCTION__, __LINE__,ic->duration);
     if (ret < 0)
         goto find_stream_info_err;
     compute_chapters_end(ic);
