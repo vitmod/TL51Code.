@@ -2191,6 +2191,10 @@ static int read_packet(AVFormatContext *s, uint8_t *buf, int raw_packet_size)
         pkt_size = TS_PACKET_SIZE;
         total = 0;
 RETRY:
+        if (s->pb->local_playback == 1 && url_interrupt_cb())
+             return AVERROR_EXIT;
+        else if (url_interrupt_cb())
+             return AVERROR(EAGAIN);
         len = avio_read(pb, buf_read, pkt_size);
         if (len <= 0 && ((len == AVERROR_EOF)
             || (len == AVERROR_EXIT)
