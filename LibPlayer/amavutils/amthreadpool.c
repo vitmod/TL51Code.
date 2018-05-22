@@ -32,6 +32,7 @@ typedef struct threadpool_thread_data {
     pthread_cond_t pthread_cond;
     int on_requred_exit;
     int thread_inited;
+    int dealock_detected_cnt;
 } threadpool_thread_data_t;
 #define POOL_OF_ITEM(item) ((threadpool_t *)(item)->extdata[0])
 #define THREAD_OF_ITEM(item) ((threadpool_thread_data_t *)(item)->extdata[0])
@@ -256,6 +257,31 @@ int amthreadpool_on_requare_exit(pthread_t pid)
     }
     return !!t->on_requred_exit;
 }
+
+int amthreadpool_on_detected_cnt(pthread_t pid)
+{
+    unsigned long rpid = pid != 0 ? pid : pthread_self();
+    threadpool_thread_data_t *t = amthreadpool_findthead_thread_data(rpid);
+    if (!t) {
+        return 0;
+    }
+    if (t->on_requred_exit) {
+        ///ALOGI("%lu name  on try exit.\n", pid);
+    }
+    return t->dealock_detected_cnt;
+}
+
+
+int amthreadpool_on_detected_inc(pthread_t pid)
+{
+    unsigned long rpid = pid != 0 ? pid : pthread_self();
+    threadpool_thread_data_t *t = amthreadpool_findthead_thread_data(rpid);
+    if (!t) {
+        return 0;
+    }
+    return t->dealock_detected_cnt++;
+}
+
 
 static int amthreadpool_pool_thread_cancel_l1(pthread_t pid, int cancel, int allthreads)
 {

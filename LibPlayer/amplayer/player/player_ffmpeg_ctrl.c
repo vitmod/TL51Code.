@@ -56,7 +56,7 @@ int ffmpeg_interrupt_callback(unsigned long npid)
 {
     int pid = npid;
     int interrupted;
-    static int dealock_detected_cnt = 0;
+    int dealock_detected_cnt = 0;
     static long last_lock_ms = 0;
     static int lastprinttime = -1;
     long curtimems;
@@ -65,8 +65,8 @@ int ffmpeg_interrupt_callback(unsigned long npid)
     }
     interrupted = amthreadpool_on_requare_exit(pid);
 
+    dealock_detected_cnt=amthreadpool_on_detected_cnt(pid);
     if (!interrupted) {
-        dealock_detected_cnt = 0;
         return 0;
     }
     curtimems = player_get_systemtime_ms();
@@ -79,7 +79,7 @@ int ffmpeg_interrupt_callback(unsigned long npid)
             log_info("...ffmpeg callback interrupted..locked. %d mS\n", (curtimems - last_lock_ms));
             lastprinttime = (curtimems - last_lock_ms) / 1000;
         }
-        dealock_detected_cnt++;
+        amthreadpool_on_detected_inc(pid);
         if (curtimems < last_lock_ms) {
             last_lock_ms = curtimems;
         }
