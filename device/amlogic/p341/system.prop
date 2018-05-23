@@ -37,6 +37,7 @@ media.amplayer.seekkeyframe=true
 media.amsuperplayer.enable=true
 media.amplayer.enable-acodecs=ac3,eac3,rm,dts
 media.amplayer.enable=true
+media.hls.disable-nuplayer=true
 media.amsuperplayer.m4aplayer=STAGEFRIGHT_PLAYER
 media.amsuperplayer.defplayer=PV_PLAYER
 media.amplayer.thumbnail=true
