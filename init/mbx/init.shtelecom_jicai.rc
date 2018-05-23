@@ -125,6 +125,7 @@ on boot
     chmod 0666 /sys/module/amvideo/parameters/amplayer_flag
     chmod 0666 /sys/module/amvideo/parameters/chip_fast_flag
     chmod 0666 /sys/module/amvideo/parameters/ctsplayer_exist
+    chmod 0666 /sys/module/amvideo/parameters/frame_count_delay
     chmod 0666 /sys/module/amvideo/parameters/first_frame_toggled
     chmod 0666 /sys/module/di/parameters/time_debug
     chmod 0666 /sys/module/di/parameters/strong_dm

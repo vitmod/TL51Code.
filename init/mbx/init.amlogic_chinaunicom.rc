@@ -124,6 +124,7 @@ on boot
     chmod 0666 /sys/module/di/parameters/strong_dm
     chmod 0666 /sys/module/di/parameters/bypass_trick_mode
     chmod 0666 /sys/module/amvideo/parameters/chip_fast_flag
+    chmod 0666 /sys/module/amvideo/parameters/frame_count_delay
     chmod 0664 /sys/class/graphics/fb0/blank
     chmod 0664 /sys/class/graphics/fb1/blank
     chmod 0664 /sys/class/tv/policy_fr_auto
