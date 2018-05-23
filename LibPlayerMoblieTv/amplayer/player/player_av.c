@@ -2694,8 +2694,8 @@ int write_av_packet(play_para_t *para)
                 tcPacket.pBuffer = buf;
                 tcPacket.nSize = size;
                 tcPacket.nTimeStamp = 0;
-                if(isIrisTcStream(&tcPacket))
-                    irisTcProcess(&tcPacket);
+                //if(isIrisTcStream(&tcPacket))
+                  //  irisTcProcess(&tcPacket);
             } 
 #endif
             write_bytes = codec_write(pkt->codec, (char *)buf, size);

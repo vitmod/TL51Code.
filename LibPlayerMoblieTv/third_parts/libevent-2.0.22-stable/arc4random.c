@@ -493,6 +493,7 @@ arc4random(void)
 }
 #endif
 
+#ifndef ARC4RANDOM_NORANDOM
 ARC4RANDOM_EXPORT void
 arc4random_buf(void *_buf, size_t n)
 {
@@ -506,6 +507,7 @@ arc4random_buf(void *_buf, size_t n)
 	}
 	_ARC4_UNLOCK();
 }
+#endif
 
 #ifndef ARC4RANDOM_NOUNIFORM
 /*

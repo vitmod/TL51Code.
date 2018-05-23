@@ -24,7 +24,7 @@
 #include <amthreadpool.h>
 #include <cutils/properties.h>
 
-#include <dist/sqlite3.h>
+//#include <dist/sqlite3.h>
 
 #define USE_INTERPOLATION
 

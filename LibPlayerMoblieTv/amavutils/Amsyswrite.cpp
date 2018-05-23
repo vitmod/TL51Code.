@@ -205,7 +205,7 @@ int amSystemWriteWriteSysfs(const char* path, char* value)
 #if ANDROID_PLATFORM_SDK_VERSION >= 21
 int amSystemControlLoopMountUnmount(int isMount, const char *path)
 {
-	const sp<ISystemWriteService>& sws = getSystemWriteService();
+	const sp<ISystemControlService>& sws = getSystemWriteService();
 	if (sws != 0) {
 		if (path) {
 			String16 p(path);
