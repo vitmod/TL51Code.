@@ -111,6 +111,8 @@ unsigned int noblock:
     int player_id;
     int start_no_out;
     dec_mode_t dec_mode;
+	int associate_dec_supported;//support associate or not
+    int mixing_level;
 } codec_para_t;
 
 typedef struct {
@@ -146,6 +148,8 @@ typedef struct {
     int player_id;
     int start_no_out;
     int error_num;
+	int associate_dec_supported;//support associate or not
+    int mixing_level;
 } arm_audio_info;
 
 

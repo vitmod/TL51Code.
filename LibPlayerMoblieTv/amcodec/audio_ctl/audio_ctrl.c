@@ -166,6 +166,74 @@ int codec_get_volume(codec_para_t *p, float *val)
 
 /* --------------------------------------------------------------------------*/
 /**
+* @brief  codec_set_pre_gain  Set audio decoder pre-gain
+*
+* @param[in]  p    Pointer of codec parameter structure
+* @param[in]  gain  gain to be set
+*
+* @return     command result
+*/
+/* --------------------------------------------------------------------------*/
+int codec_set_pre_gain(codec_para_t *p, float gain)
+{
+    int ret;
+
+    ret = audio_decode_set_pre_gain(p->adec_priv, gain);
+    return ret;
+}
+
+/* --------------------------------------------------------------------------*/
+/**
+* @brief  codec_get_pre_gain  Get audio decoder pre-gain
+*
+* @param[in]  p  Pointer of codec parameter structure
+*
+* @return     command result
+*/
+/* --------------------------------------------------------------------------*/
+int codec_get_pre_gain(codec_para_t *p, float *gain)
+{
+    int ret;
+    ret = audio_decode_get_pre_gain(p->adec_priv, gain);
+    return ret;
+}
+
+/* --------------------------------------------------------------------------*/
+/**
+* @brief  codec_set_pre_mute  Set audio decoder pre-mute
+*
+* @param[in]  p    Pointer of codec parameter structure
+* @param[in]  gain  gain to be set
+*
+* @return     command result
+*/
+/* --------------------------------------------------------------------------*/
+int codec_set_pre_mute(codec_para_t *p, uint mute)
+{
+    int ret;
+
+    ret = audio_decode_set_pre_mute(p->adec_priv, mute);
+    return ret;
+}
+
+/* --------------------------------------------------------------------------*/
+/**
+* @brief  codec_get_pre_mute  Get audio decoder pre-mute
+*
+* @param[in]  p  Pointer of codec parameter structure
+*
+* @return     command result
+*/
+/* --------------------------------------------------------------------------*/
+int codec_get_pre_mute(codec_para_t *p, uint *mute)
+{
+    int ret;
+    ret = audio_decode_get_pre_mute(p->adec_priv, mute);
+    return ret;
+}
+
+/* --------------------------------------------------------------------------*/
+/**
 * @brief  codec_set_volume  Set audio volume seperately
 *
 * @param[in]  p    Pointer of codec parameter structure
@@ -291,10 +359,10 @@ int codec_lr_mix_set(codec_para_t *p, int mode)
     return ret;
 }
 
-int codec_pcmpara_Applied_get(codec_para_t *p, int *pfs, int *pch)
+int codec_pcmpara_Applied_get(codec_para_t *p, int *pfs, int *pch,int *lfepresent)
 {
     int ret;
-    ret = audio_decpara_get(p->adec_priv, pfs, pch);
+    ret = audio_decpara_get(p->adec_priv, pfs, pch,lfepresent);
     return ret;
 }
 
@@ -356,3 +424,41 @@ int codec_get_decoder_enable(codec_para_t *p)
 {
     return audio_decoder_get_enable_status(p->adec_priv);
 }
+int codec_set_track_rate(codec_para_t *p,void *rate)
+{
+    return audio_decoder_set_trackrate(p->adec_priv,rate);
+}
+/* --------------------------------------------------------------------------*/
+/**
+* @brief  codec_set_associate_audio_enable  Set associate audio enable/disable
+*
+* @param[in]  enable  en/dis-able
+*
+* @return     Command result
+*/
+/* --------------------------------------------------------------------------*/
+int codec_set_associate_audio_enable(void *priv, unsigned int enable)
+{
+    int ret;
+
+    ret = audio_set_associate_enable(priv, enable);
+    return ret;
+}
+/* --------------------------------------------------------------------------*/
+/**
+* @brief  codec_send_associate_audio_data  send data to buffer with the length is size.
+*
+* @param[in]  buf:destination address
+* @param[in]  size:data length
+*
+* @return     write data length
+*/
+/* --------------------------------------------------------------------------*/
+int codec_send_associate_audio_data(void *priv, uint8_t *buf, size_t size)
+{
+    int ret;
+
+    ret = audio_send_associate_data(priv, buf, size);
+    return ret;
+}
+
