@@ -1,21 +1,41 @@
+/*
+ * Copyright (C) 2010 Amlogic Corporation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+
+
 #include <stdio.h>
 #include <string.h>  // strcmp
 #include <time.h>    // clock
 #include <fcntl.h>
+#include <unistd.h>
 
 #include <sys/mman.h>
 #include <audio-dec.h>
 #include <adec-pts-mgt.h>
 #include <amthreadpool.h>
 
-
+#include "Amsysfsutils.h"
+#include "amconfigutils.h"
 
 
 #define ASTREAM_DEV "/dev/uio0"
 #define ASTREAM_ADDR "/sys/class/astream/astream-dev/uio0/maps/map0/addr"
 #define ASTREAM_SIZE "/sys/class/astream/astream-dev/uio0/maps/map0/size"
 #define ASTREAM_OFFSET "/sys/class/astream/astream-dev/uio0/maps/map0/offset"
-
+#define ADDR_OFFSET "/sys/class/astream/addr_offset"
 
 
 #define AIU_AIFIFO_CTRL                            0x1580
@@ -41,7 +61,7 @@ volatile unsigned* reg_base = 0;
 #define AIFIFO_READY  (((READ_MPEG_REG(AIU_MEM_AIFIFO_CONTROL)&(1<<9))))
 #define min(x,y) ((x<y)?(x):(y))
 
-static volatile unsigned memmap = MAP_FAILED;
+static volatile void *memmap = MAP_FAILED;
 static int phys_size = 0;
 
 static unsigned long  get_num_infile(char *file)
@@ -57,6 +77,7 @@ int uio_init(aml_audio_dec_t *audec)
     //  int phys_size;
     int phys_offset;
     //  volatile unsigned memmap;
+    int addr_offset;
 
 
     audec->fd_uio = open(ASTREAM_DEV, O_RDWR);
@@ -67,8 +88,10 @@ int uio_init(aml_audio_dec_t *audec)
     phys_start = get_num_infile(ASTREAM_ADDR);
     phys_size = get_num_infile(ASTREAM_SIZE);
     phys_offset = get_num_infile(ASTREAM_OFFSET);
+    addr_offset = get_num_infile(ADDR_OFFSET);
 
-    adec_print("add=%08x, size=%08x, offset=%08x\n", phys_start, phys_size, phys_offset);
+    adec_print("add=%08x, size=%08x, phy_offset=%08x, addr_offset=%d\n",
+       phys_start, phys_size, phys_offset, addr_offset);
 
     phys_size = (phys_size + pagesize - 1) & (~(pagesize - 1));
     memmap = mmap(NULL, phys_size, PROT_READ | PROT_WRITE, MAP_SHARED, audec->fd_uio, 0 * pagesize);
@@ -79,7 +102,7 @@ int uio_init(aml_audio_dec_t *audec)
         return -1;
     }
     if (phys_offset == 0)
-        phys_offset = (AIU_AIFIFO_CTRL*4)&(pagesize-1);
+        phys_offset = ((AIU_AIFIFO_CTRL + addr_offset) << 2) & (pagesize - 1);
     reg_base = memmap + phys_offset;
     return 0;
 }
@@ -99,17 +122,25 @@ int uio_deinit(aml_audio_dec_t *audec)
 }
 
 
-static inline void waiting_bits(int bits)
+static inline void waiting_bits(int bits, int *status)
 {
     int bytes;
+    int retry = 0;
+    *status = 0;
     bytes = READ_MPEG_REG(AIU_MEM_AIFIFO_BYTES_AVAIL);
     while (bytes * 8 < bits) {
+        if (retry > 100) {
+            *status = -1;
+            break;
+        }
         if (amthreadpool_on_requare_exit(0)) {
             break;
         }
         amthreadpool_thread_usleep(1000);
         bytes = READ_MPEG_REG(AIU_MEM_AIFIFO_BYTES_AVAIL);
+        retry++;
     }
+
 }
 
 
@@ -125,7 +156,7 @@ int read_buffer(unsigned char *buffer, int size)
     int wait_times = 0, fifo_ready_wait = 0;
 
     int iii;
-
+    int status = 0;
     iii = READ_MPEG_REG(AIU_MEM_AIFIFO_LEVEL) - EXTRA_DATA_SIZE;
     //  adec_print("read_buffer start iii = %d!!\n", iii);
 
@@ -155,7 +186,11 @@ int read_buffer(unsigned char *buffer, int size)
         //adec_print("read_buffer start AIU_MEM_AIFIFO_BYTES_AVAIL bytes= %d!!\n", bytes);
         wait_times = 0;
         while (bytes == 0) {
-            waiting_bits((space > 128) ? 128 * 8 : (space * 8)); /*wait 32 bytes,if the space is less than 32 bytes,wait the space bits*/
+            waiting_bits((space > 128) ? 128 * 8 : (space * 8), &status); /*wait 32 bytes,if the space is less than 32 bytes,wait the space bits*/
+            if (status) {
+                adec_print("waiting_bits timeout \n");
+                goto out;
+            }
             bytes = READ_MPEG_REG(AIU_MEM_AIFIFO_BYTES_AVAIL);
 
             adec_print("read_buffer while AIU_MEM_AIFIFO_BYTES_AVAIL = %d!!\n", bytes);

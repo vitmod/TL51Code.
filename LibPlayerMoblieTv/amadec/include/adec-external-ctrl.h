@@ -26,6 +26,10 @@ extern "C"
     int audio_decode_set_mute(void *handle, int);
     int audio_decode_set_volume(void *, float);
     int audio_decode_get_volume(void *, float *);
+    int audio_decode_set_pre_gain(void *, float);
+    int audio_decode_get_pre_gain(void *, float *);
+    int audio_decode_set_pre_mute(void *, uint);
+    int audio_decode_get_pre_mute(void *, uint *);
     int audio_channels_swap(void *);
     int audio_channel_left_mono(void *);
     int audio_channel_right_mono(void *);
@@ -43,11 +47,12 @@ extern "C"
     int get_decoder_status(void *p, struct adec_status *adec);
     int get_decoder_info(void *p);
     int audio_channel_lrmix_flag_set(void *, int enable);
-    int audio_decpara_get(void *handle, int *pfs, int *pch);
+    int audio_decpara_get(void *handle, int *pfs, int *pch,int *lfepresent);
     typedef int (*adec_player_notify_t)(int pid, int msg, unsigned long ext1, unsigned long ext2);
     int audio_register_notify(const adec_player_notify_t notify_fn);
-    int audio_notify(void *handle, int msg, unsigned long ext1, unsigned long ext2);
-
+	 int audio_notify(void *handle, int msg, unsigned long ext1, unsigned long ext2);
+    int audio_set_associate_enable(void *handle, unsigned int enable);
+    int audio_send_associate_data(void *handle, uint8_t *buf, size_t size);
 #ifdef  __cplusplus
 }
 #endif

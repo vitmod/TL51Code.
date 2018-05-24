@@ -15,7 +15,7 @@
 
 ADEC_BEGIN_DECLS
 
-#define MESSAGE_NUM_MAX    64
+#define MESSAGE_NUM_MAX    12
 
 typedef enum {
     CMD_START = 1 << 0,

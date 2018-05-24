@@ -24,7 +24,6 @@
 #include <amthreadpool.h>
 #include <cutils/properties.h>
 
-//#include <dist/sqlite3.h>
 
 #define USE_INTERPOLATION
 
@@ -51,7 +50,18 @@ static short pass1_interpolation_output[0x4000];
 #pragma align_to(64,pass1_interpolation_output)
 static short interpolation_output[0x8000];
 #pragma align_to(64,interpolation_output)
-
+static int tv_mode = 0;
+static int getprop_bool(const char * path)
+{
+    char buf[PROPERTY_VALUE_MAX];
+    int ret = -1;
+    ret = property_get(path, buf, NULL);
+    if (ret > 0) {
+        if (strcasecmp(buf,"true") == 0 || strcmp(buf,"1") == 0)
+            return 1;
+    }
+    return 0;
+}
 static inline short CLIPTOSHORT(int x)
 {
     short res;
@@ -75,6 +85,24 @@ static inline short CLIPTOSHORT(int x)
 #endif
     return res;
 }
+
+static int set_sysfs_type(const char *path, const char *type)
+{
+    int ret = -1;
+    int fd = open(path, O_CREAT | O_RDWR | O_TRUNC, 0644);
+    if (fd >= 0) {
+        char set_type[10] = {0};
+        int length = snprintf(set_type, sizeof(set_type), "%s", type);
+        if (length > 0)
+            ret = write(fd, set_type, length);
+        adec_print("%s , %s\n", path, set_type);
+        close(fd);
+    }else{
+        adec_print("open hdmi-tx node:%s failed!\n", path);
+    }
+    return ret;
+}
+
 
 static void pcm_interpolation(int interpolation, unsigned num_channel, unsigned num_sample, short *samples)
 {
@@ -148,14 +176,20 @@ static int set_params(alsa_param_t *alsa_params)
         adec_print("Access type not available");
         return err;
     }
-
-    err = snd_pcm_hw_params_set_format(alsa_params->handle, hwparams, alsa_params->format);
+    if (tv_mode) {
+        alsa_params->format = SND_PCM_FORMAT_S32_LE;
+    }
+    err = snd_pcm_hw_params_set_format(alsa_params->handle,hwparams,alsa_params->format);
     if (err < 0) {
         adec_print("Sample format non available");
         return err;
     }
-
+    alsa_params->format = SND_PCM_FORMAT_S16_LE;
+    if (tv_mode) {
+        alsa_params->channelcount = 8;
+    }
     err = snd_pcm_hw_params_set_channels(alsa_params->handle, hwparams, alsa_params->channelcount);
+    alsa_params->channelcount = 2;
     if (err < 0) {
         adec_print("Channels count non available");
         return err;
@@ -185,7 +219,13 @@ static int set_params(alsa_param_t *alsa_params)
     alsa_params->bits_per_sample = snd_pcm_format_physical_width(alsa_params->format);
     //bits_per_frame = bits_per_sample * hwparams.realchanl;
     alsa_params->bits_per_frame = alsa_params->bits_per_sample * alsa_params->channelcount;
-    bufsize =   PERIOD_NUM * PERIOD_SIZE;
+    adec_print("bits_per_sample %d,bits_per_frame %d\n",alsa_params->bits_per_sample,alsa_params->bits_per_frame);
+    bufsize = PERIOD_NUM * PERIOD_SIZE;
+
+    if (tv_mode) {
+        set_sysfs_type("/sys/class/amhdmitx/amhdmitx0/aud_output_chs", "2:1");
+    }
+
     err = snd_pcm_hw_params_set_buffer_size_near(alsa_params->handle, hwparams, &bufsize);
     if (err < 0) {
         adec_print("Unable to set	buffer	size \n");
@@ -264,6 +304,8 @@ static int set_params(alsa_param_t *alsa_params)
 
 static int alsa_get_hdmi_state()
 {
+    return 0;
+#if 0
     int fd = -1, err = 0, state = 0;
     unsigned fileSize = 32;
     char *read_buf = NULL;
@@ -296,6 +338,7 @@ OUT:
     free(read_buf);
     close(fd);
     return state;
+#endif
 }
 
 static int alsa_get_aml_card()
@@ -380,117 +423,6 @@ OUT:
     return port;
 }
 
-static int vol_index = -1;
-
-/*static int db_callback(void *priv_data, int ncol, char **data, char **cols)
-{
-    int i;
-    for (i = 0; i < ncol; i++) {
-        adec_print("db_callback, cols: %s, data: %s, %d\n", *cols, data == NULL ? "NULL" : *data, atoi(*data));
-        if (i == 0) {
-            vol_index = atoi(*data);
-            break;
-        }
-    }
-
-    return 0;
-}
-
-static int get_vol_index()
-{
-    sqlite3 *db = NULL;
-    char *err_msg = NULL;
-    char *sql = NULL;
-    char *column = "volume_music_speaker";
-    int ret = -1;
-    adec_print("get_vol_index, open db\n");
-    int err = sqlite3_open_v2("/data/data/com.android.providers.settings/databases/settings.db", &db, SQLITE_OPEN_READONLY, 0);
-    if (err != SQLITE_OK) {
-        adec_print("get_vol_index, open db failed: %s\n", sqlite3_errmsg(db));
-        return ret;
-    }
-
-    sql = sqlite3_mprintf("select value from system where name = '%q';", column);
-    if (sqlite3_exec(db, sql, db_callback, NULL, &err_msg) == SQLITE_OK) {
-        adec_print("get_vol_index, sqlite3_exec ok\n");
-    } else {
-        adec_print("get_vol_index, sqlite3_exec failed: %s\n", err_msg);
-        sqlite3_free(err_msg);
-        ret = -1;
-    }
-    sqlite3_free(sql);
-
-    if (db) {
-        sqlite3_close(db);
-        db = NULL;
-    }
-
-    return ret;
-}*/
-
-enum {
-    VOLMIN = 0,
-    VOLKNEE1,
-    VOLKNEE2,
-    VOLMAX,
-    VOLCNT,
-};
-
-struct volume_curve_point {
-    int index;
-    float db_attenuation;
-};
-
-struct volume_curve_point speaker_volume_curve[VOLCNT] = {
-    {1, -56.0f}, {20, -34.0f}, {60, -11.0f}, {100, 0.0f}
-};
-
-struct stream_descriptor {
-    int index_min;
-    int index_max;
-    int index_cur[15];
-    struct volume_curve_point *volume_curve;
-};
-
-static float index2volume(int index)
-{
-    struct volume_curve_point *curve = NULL;
-    struct stream_descriptor * desc = NULL;
-    int steps = 0;
-    int volume_index = -1;
-    int segment = 0;
-    float decibels = 0.0f;
-    float amplification = 0.0f;
-
-    desc = malloc(sizeof(struct stream_descriptor));
-    desc->volume_curve = speaker_volume_curve;
-    curve = desc->volume_curve;
-    desc->index_min = 0;
-    desc->index_max = 15;
-
-    steps = 1 + curve[VOLMAX].index - curve[VOLMIN].index;
-    adec_print("index2volume, steps: %d\n", steps);
-    volume_index = (steps * (index - desc->index_min)) / (desc->index_max - desc->index_min);
-    segment = 0;
-    if (volume_index < curve[VOLMIN].index)
-        return 0.0f;
-    if (volume_index < curve[VOLKNEE1].index)
-        segment = 0;
-    else if (volume_index < curve[VOLKNEE2].index)
-        segment = 1;
-    else if (volume_index <= curve[VOLMAX].index)
-        segment = 2;
-    else
-        return 1.0f;
-
-    decibels = curve[segment].db_attenuation + ((float)(volume_index - curve[segment].index)) *
-        ((curve[segment + 1].db_attenuation - curve[segment].db_attenuation) /
-         ((float)(curve[segment + 1].index - curve[segment].index)));
-    amplification = exp(decibels * 0.115129f);
-
-    return amplification;
-}
-
 static size_t pcm_write(alsa_param_t * alsa_param, u_char * data, size_t count)
 {
     snd_pcm_sframes_t r;
@@ -503,32 +435,11 @@ static size_t pcm_write(alsa_param_t * alsa_param, u_char * data, size_t count)
             count = chunk_size;
         }
     */
-    /* volume control for bootplayer  
+    /* volume control for bootplayer  */
     if (alsa_default_vol  != 1.0) {
         for (i  = 0;i < count*2;i++) {
             sample[i] = (short)(alsa_default_vol*(float)sample[i]);
         }
-    }*/
-    float volume = -1.0f;
-    char value[PROPERTY_VALUE_MAX]={0};
-
-    adec_print("pcm_write, invoke get_vol_index\n");
-    //get_vol_index();
-    property_get("persist.audio.volume",value,NULL);
-    vol_index = atoi(value);
-    if (vol_index >= 0)
-        volume = index2volume(vol_index);
-    adec_print("pcm_write, index2volume: %f\n", volume);
-    if (volume < 0 || volume > 1)
-        volume = 0.3f;
-    adec_print("pcm_write, volume: %f\n", volume);
-    vol_index = -1;
-
-    i =0;
-    short *p16 = (short*)data;
-    int num  = count*2;
-    for(i=0;i<num;i++){
-        p16[i] = volume * p16[i];
     }
     // dump  pcm data here
 #if 0
@@ -541,6 +452,30 @@ static size_t pcm_write(alsa_param_t * alsa_param, u_char * data, size_t count)
             adec_print("could not open file:audio_out.pcm");
         }
 #endif
+    int *tmp_buffer = NULL;
+    int bits_per_frame = alsa_param->bits_per_frame;
+    if (tv_mode) {
+        tmp_buffer = (int*)malloc(count*8*4);
+        if (tmp_buffer == NULL) {
+            adec_print("malloc tmp_buffer failed\n");
+            return -1;
+        }
+        int i;
+        int out_frames = count;
+        short  *in_buffer = (short*)data;
+        for (i = 0; i < out_frames; i ++) {
+            tmp_buffer[8*i] = ((int)(in_buffer[2*i])) << 16;
+            tmp_buffer[8*i + 1] = ((int)(in_buffer[2*i + 1])) << 16;
+            tmp_buffer[8*i + 2] = ((int)(in_buffer[2*i])) << 16;
+            tmp_buffer[8*i + 3] = ((int)(in_buffer[2*i + 1])) << 16;
+            tmp_buffer[8*i + 4] = 0;
+            tmp_buffer[8*i + 5] = 0;
+            tmp_buffer[8*i + 6] = 0;
+            tmp_buffer[8*i + 7] = 0;
+        }
+        data = (char*)tmp_buffer;
+        bits_per_frame = bits_per_frame*8;//8ch,32bit
+    }
     while (count > 0) {
         r = writei_func(alsa_param->handle, data, count);
 
@@ -556,15 +491,20 @@ static size_t pcm_write(alsa_param_t * alsa_param, u_char * data, size_t count)
         if (r < 0) {
             printf("xun in\n");
             if ((r = snd_pcm_prepare(alsa_param->handle)) < 0) {
-                return 0;
+                result = 0;
+                goto  done;
             }
         }
 
         if (r > 0) {
             result += r;
             count -= r;
-            data += r * alsa_param->bits_per_frame / 8;
+            data += r * bits_per_frame / 8;
         }
+    }
+done:
+    if (tmp_buffer) {
+        free(tmp_buffer);
     }
     return result;
 }
@@ -778,7 +718,8 @@ static void *alsa_playback_loop(void *args)
     adec_print("alsa playback loop start to run !\n");
 
     while (!alsa_params->stop_flag) {
-        if (hdmi_out == 0) {
+#if 0
+    if (hdmi_out == 0) {
             adec_print("===dynmiac get hdmi plugin state===\n");
             if (alsa_get_hdmi_state() == 1) {
                 if (alsa_swtich_port(alsa_params, alsa_get_aml_card(), alsa_get_spdif_port()) == -1) {
@@ -798,7 +739,8 @@ static void *alsa_playback_loop(void *args)
             hdmi_out = 0;
             adec_print("[%s,%d]get default device, use default device \n", __FUNCTION__, __LINE__);
         }
-        while ((len < (128 * 2)) && (!alsa_params->stop_flag)) {
+#endif
+    while ((len < (128 * 2)) && (!alsa_params->stop_flag)) {
             if (offset > 0) {
                 memcpy(buffer, buffer + offset, len);
             }
@@ -843,9 +785,9 @@ int alsa_init(struct aml_audio_dec* audec)
     int sound_dev_id = 0;
     int err;
     pthread_t tid;
-    alsa_param_t *alsa_param = NULL;
+    alsa_param_t *alsa_param;
     audio_out_operations_t *out_ops = &audec->aout_ops;
-
+    tv_mode = getprop_bool("ro.platform.has.tvuimode");
     alsa_param = (alsa_param_t *)malloc(sizeof(alsa_param_t));
     if (!alsa_param) {
         adec_print("alloc alsa_param failed, not enough memory!");
@@ -931,7 +873,7 @@ int alsa_init(struct aml_audio_dec* audec)
         sound_card_id = 0;
         adec_print("get aml card fail, use default \n");
     }
-
+#if 0
     if (alsa_get_hdmi_state() == 1) {
         sound_dev_id = alsa_get_spdif_port();
         if (sound_dev_id < 0) {
@@ -942,17 +884,13 @@ int alsa_init(struct aml_audio_dec* audec)
         }
         adec_print("get hdmi device, use hdmi device \n");
     }
-
+#endif
     sprintf(sound_card_dev, "hw:%d,%d", sound_card_id, sound_dev_id);
-
     err = snd_pcm_open(&alsa_param->handle, sound_card_dev, SND_PCM_STREAM_PLAYBACK, 0);
     if (err < 0) {
         adec_print("audio open error: %s", snd_strerror(err));
-        free(alsa_param);
         return -1;
     }
-
-
     readi_func = snd_pcm_readi;
     writei_func = snd_pcm_writei;
     readn_func = snd_pcm_readn;
@@ -1090,13 +1028,12 @@ static int alsa_get_space(alsa_param_t * alsa_param)
 {
     snd_pcm_status_t *status;
     int ret;
-
+    int bits_per_sample = alsa_param->bits_per_sample;
     snd_pcm_status_alloca(&status);
     if ((ret = snd_pcm_status(alsa_param->handle, status)) < 0) {
         adec_print("Cannot get pcm status \n");
         return 0;
     }
-
     ret = snd_pcm_status_get_avail(status) * alsa_param->bits_per_sample / 8;
     if (ret > alsa_param->buffer_size) {
         ret = alsa_param->buffer_size;
@@ -1114,8 +1051,12 @@ unsigned long alsa_latency(struct aml_audio_dec* audec)
     int buffered_data;
     int sample_num;
     alsa_param_t *alsa_param = (alsa_param_t *)audec->aout_ops.private_data;
+    int bits_per_sample = alsa_param->bits_per_sample;
+    if (tv_mode) {
+        bits_per_sample = bits_per_sample*4;
+    }
     buffered_data = alsa_param->buffer_size - alsa_get_space(alsa_param);
-    sample_num = buffered_data / (alsa_param->channelcount * (alsa_param->bits_per_sample / 8)); /*16/2*/
+    sample_num = buffered_data / (alsa_param->channelcount * (bits_per_sample / 8)); /*16/2*/
     return ((sample_num * 1000) / alsa_param->rate);
 }
 

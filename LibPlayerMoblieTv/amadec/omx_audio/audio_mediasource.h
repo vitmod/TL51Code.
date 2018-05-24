@@ -5,7 +5,6 @@
 #include  "DataSource.h"
 #include  "MediaBufferGroup.h"
 #include  "MetaData.h"
-#include "../audio-dec.h"
 
 namespace android
 {
@@ -22,9 +21,6 @@ public:
     virtual int GetSampleRate() = 0;
     virtual int GetChNum() = 0;
     virtual int GetChNumOriginal() {
-        return 0;
-    };
-    virtual int get_frames_status(aml_audio_dec_t *audec) {
         return 0;
     };
     virtual int* Get_pStop_ReadBuf_Flag() = 0;

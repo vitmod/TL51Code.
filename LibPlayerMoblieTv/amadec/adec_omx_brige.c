@@ -60,7 +60,7 @@ int find_omx_lib(aml_audio_dec_t *audec)
         audec->StageFrightCodecEnableType = OMX_ENABLE_CODEC_TRUEHD;
     } else if (audec->format == ACODEC_FMT_WMAVOI) {
         audec->StageFrightCodecEnableType = OMX_ENABLE_CODEC_WMAVOI;
-    }  else if(audec->format == ACODEC_FMT_AMR && audec->codec_id == CODEC_ID_AMR_NB) {
+    }  else if (audec->format == ACODEC_FMT_AMR && audec->codec_id == CODEC_ID_AMR_NB) {
         audec->StageFrightCodecEnableType = OMX_ENABLE_CODEC_AMR_NB;
     }
 
@@ -131,6 +131,10 @@ void *audio_decode_loop_omx(void *args)
 
     rawoutput_enable = amsysfs_get_sysfs_int("/sys/class/audiodsp/digital_raw");
     adec_print("rawoutput_enable/%d", rawoutput_enable);
+    if (rawoutput_enable == 1 && audec->StageFrightCodecEnableType == OMX_ENABLE_CODEC_TRUEHD) {
+        adec_print("truehd passthrough enable only when hdmi passthr\n");
+        rawoutput_enable = 0;
+    }
     if (audec->parm_omx_codec_init && audec->parm_omx_codec_start) {
         (*audec->parm_omx_codec_init)(audec, audec->StageFrightCodecEnableType, (void*)read_buffer, &audec->exit_decode_thread);
         (*audec->parm_omx_codec_start)(audec);
@@ -147,9 +151,6 @@ exit_decode_loop:
         outbuf = pcm_buf_tmp;
         outlen = AVCODEC_MAX_AUDIO_FRAME_SIZE;
         (*audec->parm_omx_codec_read)(audec, outbuf, &outlen, &audec->exit_decode_thread);
-        // adec_print("audec->decoded_nb_frames:%d audec->dropped_nb_frames:%d,audec->error_nb_frames:%d",
-           // audec->decoded_nb_frames,audec->dropped_nb_frames,audec->error_nb_frames);
-         audio_get_decoded_nb_frames(audec);
 
         outlen_raw = 0;
         if (audec->StageFrightCodecEnableType == OMX_ENABLE_CODEC_DTSHD ||
@@ -167,8 +168,6 @@ exit_decode_loop:
             }
         } else if ((audec->StageFrightCodecEnableType == OMX_ENABLE_CODEC_AC3)   ||
                    (audec->StageFrightCodecEnableType == OMX_ENABLE_CODEC_EAC3)) {
-#ifndef DOLBY_DS1_UDC
-#ifdef USE_ARM_AUDIO_DEC
             if (outlen > 8) {
                 memcpy(&outlen, outbuf, 4);
                 outbuf += 4;
@@ -178,10 +177,9 @@ exit_decode_loop:
             } else {
                 outlen = 0;
             }
-#endif
-#endif
         }
         if (outlen > 0) {
+            audec->pcm_out_count++;
             memset(&g_AudioInfo, 0, sizeof(AudioInfo));
             g_AudioInfo.channels = (*audec->parm_omx_codec_get_Nch)(audec);
             g_AudioInfo.samplerate = (*audec->parm_omx_codec_get_FS)(audec);
@@ -228,7 +226,7 @@ exit_decode_loop:
                 audec->pcm_cache_size -= wlen;
             }
 
-            while (rawoutput_enable && !audec->exit_decode_thread && outlen_raw) {
+            while (rawoutput_enable && !audec->exit_decode_thread && outlen_raw && aout_ops->audio_out_raw_enable) {
                 if (g_bst_raw->buf_length - g_bst_raw->buf_level < outlen_raw) {
                     amthreadpool_thread_usleep(20000);
                     continue;
@@ -277,7 +275,8 @@ void stop_decode_thread_omx(aml_audio_dec_t *audec)
 {
     audec->exit_decode_thread = 1;
     int ret = amthreadpool_pthread_join(audec->sn_threadid, NULL);
-    audec->exit_decode_thread = 0;
+    //omx audio thread exit depend this flag, do not clear after omx bridge thread exit
+    //audec->exit_decode_thread = 0;
     audec->sn_threadid = -1;
     audec->sn_getpackage_threadid = -1;
 }

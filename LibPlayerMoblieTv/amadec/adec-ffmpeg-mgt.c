@@ -14,6 +14,10 @@
 #include <adec-external-ctrl.h>
 #include <amthreadpool.h>
 #include <cutils/properties.h>
+#include <adec_assoc_audio.h>
+
+
+static char UDCInOutMix[] = "media.udc.inoutmix";
 
 extern int read_buffer(unsigned char *buffer, int size);
 void *audio_decode_loop(void *args);
@@ -52,6 +56,7 @@ audio_lib_t audio_lib_list[] = {
     {ACODEC_FMT_MULAW, "libpcm.so"},
     {ACODEC_FMT_PCM_S24LE, "libpcm.so"},
     {ACODEC_FMT_ADPCM, "libadpcm.so"},
+    {ACODEC_FMT_DRA, "libdra.so"},
     NULL
 } ;
 
@@ -219,6 +224,10 @@ unsigned long  armdec_get_pts(dsp_operations_t *dsp_ops)
     unsigned long delay_pts;
     char value[PROPERTY_VALUE_MAX];
     aml_audio_dec_t *audec = (aml_audio_dec_t *)dsp_ops->audec;
+    audio_out_operations_t * aout_ops = &audec->aout_ops;
+    float  track_speed = 1.0f;
+    if (aout_ops->track_rate != 8.8f)
+        track_speed = aout_ops->track_rate;
     switch (audec->g_bst->data_width) {
     case AV_SAMPLE_FMT_U8:
         data_width = 8;
@@ -275,8 +284,10 @@ unsigned long  armdec_get_pts(dsp_operations_t *dsp_ops)
         adec_print("====abuf have not open!\n", val);
     }
 
-    if (am_getconfig_bool("media.arm.audio.apts_add")) {
-        offset = 0;
+    if (audec->tsync_mode != TSYNC_MODE_PCRMASTER ) {
+        if (am_getconfig_bool("media.arm.audio.apts_add") || audec->pcm_out_count == 0) {
+            offset = 0;
+        }
     }
     pts = offset;
     if (!audec->first_apts_lookup_over) {
@@ -312,6 +323,7 @@ unsigned long  armdec_get_pts(dsp_operations_t *dsp_ops)
     len = audec->g_bst->buf_level + audec->pcm_cache_size;
     frame_nums = (len * 8 / (data_width * channels));
     delay_pts = (frame_nums * 90000 / samplerate);
+    delay_pts = delay_pts*track_speed;
     if (pts > delay_pts) {
         pts -= delay_pts;
     } else {
@@ -435,7 +447,6 @@ static int InBufferRelease(aml_audio_dec_t *audec)
     return 0;
 }
 
-
 static int OutBufferInit(aml_audio_dec_t *audec)
 {
     audec->g_bst = malloc(sizeof(buffer_stream_t));
@@ -465,6 +476,7 @@ static int OutBufferInit(aml_audio_dec_t *audec)
     if (audec->channels > 0) {
         audec->g_bst->channels = audec->channels;
     }
+
     if (audec->samplerate > 0) {
         audec->g_bst->samplerate = audec->samplerate;
     }
@@ -491,7 +503,7 @@ static int OutBufferInit_raw(aml_audio_dec_t *audec)
     }
     else if (audec->format == ACODEC_FMT_TRUEHD && amsysfs_get_sysfs_int("/sys/class/audiodsp/digital_raw") == 2) {
         audec->adec_ops->nOutBufSize *= 2;
-    }    
+    }
     int ret = init_buff(audec->g_bst_raw, audec->adec_ops->nOutBufSize);
     if (ret == -1) {
         adec_print("[%s %d]raw_buf init failed !\n", __FUNCTION__, __LINE__);
@@ -546,6 +558,7 @@ static int enable_raw_output(aml_audio_dec_t *audec)
     }
     return 0;
 }
+
 static int audio_codec_init(aml_audio_dec_t *audec)
 {
     //reset static&global
@@ -562,10 +575,11 @@ static int audio_codec_init(aml_audio_dec_t *audec)
     audec->sn_threadid = -1;
     audec->sn_getpackage_threadid = -1;
     audec->OmxFirstFrameDecoded = 0;
-    audec->error_nb_frames=0;
+	audec->error_nb_frames=0;
     audec->last_error_nb_frames=0;
     audec->report_flag = am_getconfig_bool_def("media.player.cmcc_report.enable");
     audec->error_flag = 0;
+    audec->pcm_out_count = 0;
     package_list_init(audec);
     while (0 != set_sysfs_int(DECODE_ERR_PATH, DECODE_NONE_ERR)) {
         adec_print("[%s %d]set codec fatal failed ! \n", __FUNCTION__, __LINE__);
@@ -645,6 +659,33 @@ static int audio_codec_init(aml_audio_dec_t *audec)
         goto err3;
     }
 
+/*if the stream contains the main and associate data, we will init the associate buffer
+  *assoc_bst_ptr to store the point of associate bst
+  *assoc_enable to store  the en/dis-able of associate
+  *associate_dec_supported
+        *as 1>media.udc.inoutmix as "input:2,output:1,mix:1,"
+            set the media.udc.mixinglevel as the (mixing_level*64/100-32)
+        *as 0>media.udc.inoutmix as "input:1,output:1,mix:1,"
+  */
+    adec_print("%s::%d-[associate_dec_supported:%d]\n", __FUNCTION__, __LINE__, audec->associate_dec_supported);
+    if (audec->associate_dec_supported == 1) {
+        ret = InAssocBufferInit(audec);
+        if (ret == -1) {
+            adec_print("====in buffer  init err \n");
+            goto err3;
+        }
+        if ((audec->format == ACODEC_FMT_AC3) || (audec->format == ACODEC_FMT_EAC3)) {
+            amsysfs_write_prop(UDCInOutMix,"input:2,output:1,mix:1,");
+        }
+        //set the mixing level between main and assoc
+        audio_set_mixing_level_between_main_assoc(audec->mixing_level);
+    }
+    else {
+        if ((audec->format == ACODEC_FMT_AC3) || (audec->format == ACODEC_FMT_EAC3)) {
+            amsysfs_write_prop(UDCInOutMix,"input:1,output:1,mix:1,");
+        }
+    }
+
     //4-other init
     audec->adsp_ops.dsp_on = 1;
     audec->adsp_ops.dsp_read = armdec_stream_read;
@@ -660,6 +701,8 @@ static int audio_codec_init(aml_audio_dec_t *audec)
     audec->i2s_iec958_sync_flag = 1;
     audec->i2s_iec958_sync_gate = 0;
     audec->codec_type = 0;
+    audec->parm_omx_codec_read_assoc_data = read_assoc_data;
+
     return 0;
 
 err1:
@@ -674,6 +717,7 @@ err3:
     OutBufferRelease(audec);
     InBufferRelease(audec);
     OutBufferRelease_raw(audec);
+    InAssocBufferRelease(audec);
     return -1;
 }
 int audio_codec_release(aml_audio_dec_t *audec)
@@ -685,14 +729,21 @@ int audio_codec_release(aml_audio_dec_t *audec)
     } else {
         stop_decode_thread_omx(audec);
     }
+    if (audec->associate_dec_supported == 1) {
+        if ((audec->format == ACODEC_FMT_AC3) || (audec->format == ACODEC_FMT_EAC3)) {
+            amsysfs_write_prop(UDCInOutMix,"input:1,output:1,mix:1,");
+        }
+    }
 
     InBufferRelease(audec);//3-uio uninit
     OutBufferRelease(audec);//4-outbufferrelease
     OutBufferRelease_raw(audec);
+    InAssocBufferRelease(audec);
     audec->adsp_ops.dsp_on = -1;//5-other release
     audec->adsp_ops.dsp_read = NULL;
     audec->adsp_ops.get_cur_pts = NULL;
     audec->adsp_ops.dsp_file_fd = -1;
+    audec->parm_omx_codec_read_assoc_data = NULL;
 
     return 0;
 }
@@ -813,6 +864,10 @@ static int start_adec(aml_audio_dec_t *audec)
             avsync_en(1);
             adec_pts_resume();
             audec->auto_mute = 0;
+        }
+        if (audec->tsync_mode == TSYNC_MODE_PCRMASTER) {
+            adec_print("[wcs-%s]-before audio track start,sleep 200ms\n",__FUNCTION__);
+            amthreadpool_thread_usleep(200 * 1000); //200ms
         }
         aout_ops->start(audec);
         audec->state = ACTIVE;
@@ -1302,6 +1357,7 @@ exit_decode_loop:
                     }
                 }
                 if (outlen > 0) {
+                    audec->pcm_out_count++;
                     check_audio_info_changed(audec);
                 }
                 if (outlen > AVCODEC_MAX_AUDIO_FRAME_SIZE) {
@@ -1557,5 +1613,4 @@ MSG_LOOP:
     pthread_exit(NULL);
     return NULL;
 }
-
 

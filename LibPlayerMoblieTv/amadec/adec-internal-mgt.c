@@ -63,10 +63,10 @@ audio_type_t audio_type[] = {
     {ACODEC_FMT_WIFIDISPLAY, "pcm"},
     {ACODEC_FMT_ALAW, "pcm"},
     {ACODEC_FMT_MULAW, "pcm"},
-    {ACODEC_FMT_PCM_S24LE, "pcm"},
 
     {ACODEC_FMT_ADPCM, "adpcm"},
     {ACODEC_FMT_WMAVOI, "wmavoi"},
+    {ACODEC_FMT_DRA, "dra"},
     {ACODEC_FMT_NULL, "null"},
 
 };
@@ -586,7 +586,7 @@ static int set_audio_decoder(aml_audio_dec_t *audec)
         }
     }
 
-    if (match_types(t->type, "thd") || match_types(t->type, "wmavoi")) {
+    if (match_types(t->type, "thd") || match_types(t->type, "wmavoi") || match_types(t->type, "dra") ) {
         adec_print("audio format is %s, so chose AUDIO_ARM_DECODER", t->type);
         audio_decoder = AUDIO_ARM_DECODER;
         goto exit;
@@ -602,7 +602,7 @@ static int set_audio_decoder(aml_audio_dec_t *audec)
 #ifdef DOLBY_USE_ARMDEC
             adec_print("DOLBY_USE_ARMDEC=%d", DOLBY_USE_ARMDEC);
 #ifndef USE_ARM_AUDIO_DEC
-            if (access("/system/etc/firmware/audiodsp_codec_ddp_dcv.bin",F_OK)) {
+            if (access("/system/etc/firmware/audiodsp_codec_ddp_dcv.bin",0 /*F_OK*/)) {
 #endif
                 audio_decoder = AUDIO_ARM_DECODER;
 #ifndef USE_ARM_AUDIO_DEC
@@ -617,7 +617,7 @@ static int set_audio_decoder(aml_audio_dec_t *audec)
         }
 #ifndef USE_ARM_AUDIO_DEC
         else if (match_types(t->type, "dts")) {
-            if (access("/system/etc/firmware/audiodsp_codec_dtshd.bin", F_OK)) {
+            if (access("/system/etc/firmware/audiodsp_codec_dtshd.bin", 0/*F_OK*/)) {
                 adec_print("using no license dts component");
                 audio_decoder = AUDIO_ARM_DECODER;
             } else {
@@ -702,19 +702,6 @@ int adec_thread_wakeup(aml_audio_dec_t *audec)
     return ret;
 }
 
-static int dts_audio_codec_support()
-{
-    char buf[8];
-    int dts_en = 0;
-    amsysfs_get_sysfs_str("/sys/class/amaudio/dts_enable", buf, sizeof(buf));
-    if (sscanf(buf, "0x%x", &dts_en) < 1) {
-        adec_print("unable to get dts enable port: %s", buf);
-        return 0;
-    }
-    adec_print("%s, dts_en=%d,buf: %s\n",__func__,dts_en, buf);
-    return dts_en;
-}
-
 int audiodec_init(aml_audio_dec_t *audec)
 {
     int ret = 0;
@@ -728,22 +715,13 @@ int audiodec_init(aml_audio_dec_t *audec)
     set_audio_decoder(audec);
     audec->format_changed_flag = 0;
     audec->audio_decoder_enabled  = -1;//default set a invalid value
-    audec->mix_lr_channel_mode  = 0; //default stereo lr mode
+    audec->mix_lr_channel_enable  = -1;
+    audec->pre_gain_enable  = -1;
+    audec->pre_gain = 1.0;
+    audec->pre_mute = 0;
     audec->VersionNum = -1;
-	audec->left_vol = 1.0;
-	audec->right_vol = 1.0;
     if (am_getconfig_bool("media.libplayer.wfd"))  {
         wfd = 1;
-    }
-    audec->last_digital_raw_state = amsysfs_get_sysfs_int("/sys/class/audiodsp/digital_raw");
-    if (audec->format == ACODEC_FMT_DTS) {
-        if (dts_audio_codec_support() == 0) {
-        if (audec->last_digital_raw_state <= 0) {
-            amsysfs_set_sysfs_int("/sys/class/audiodsp/digital_raw",2);
-        }
-        adec_print("Audio Format is DTS, not support decoder,set passthrough,Last state:%d\n",
-            audec->last_digital_raw_state);
-        }
     }
     if (get_audio_decoder() == AUDIO_ARC_DECODER) {
         audec->adsp_ops.dsp_file_fd = -1;

@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <unistd.h>
 #include <audio-dec.h>
 #include <amthreadpool.h>
 #include <adec-external-ctrl.h>
@@ -67,6 +67,10 @@ int audio_decode_init(void **handle, arm_audio_info *a_ainfo)
     audec->player_id = a_ainfo->player_id;
     audec->start_no_out = a_ainfo->start_no_out;
     audec->player_id = a_ainfo->player_id;
+    audec->associate_dec_supported = a_ainfo->associate_dec_supported;
+    audec->mixing_level = a_ainfo->mixing_level;
+    adec_print("%s::%d-[audec associate support:%d]-[audec mixing_level:%d]\n",
+        __FUNCTION__, __LINE__, audec->associate_dec_supported, audec->mixing_level);
     if (a_ainfo->droppcm_flag) {
         audec->droppcm_flag = a_ainfo->droppcm_flag;
         a_ainfo->droppcm_flag = 0;
@@ -74,6 +78,7 @@ int audio_decode_init(void **handle, arm_audio_info *a_ainfo)
     if (a_ainfo->extradata_size > 0 && a_ainfo->extradata_size <= AUDIO_EXTRA_DATA_SIZE) {
         memcpy((char*)audec->extradata, (char*)a_ainfo->extradata, a_ainfo->extradata_size);
     }
+
     audec->adsp_ops.audec = audec;
     //  adec_print("audio_decode_init  pcodec = %d, pcodec->ctxCodec = %d!\n", pcodec, pcodec->ctxCodec);
     ret = audiodec_init(audec);
@@ -211,14 +216,13 @@ int audio_decode_release(void **handle)
 {
     int ret;
     adec_cmd_t *cmd;
-    aml_audio_dec_t *audec;
+    aml_audio_dec_t *audec = (aml_audio_dec_t *) * handle;
 
-    if (!handle ||!(* handle)) {
+    if (!handle) {
         adec_print("audio handle is NULL !\n");
         return -1;
     }
 
-    audec = (aml_audio_dec_t *) * handle;
     cmd = adec_message_alloc();
     if (cmd) {
         cmd->ctrl_cmd = CMD_RELEASE;
@@ -321,6 +325,47 @@ int audio_decode_set_volume(void *handle, float vol)
 }
 
 /**
+ * \brief set audio pre-gain
+ * \param handle pointer to player private data
+ * \param gain pre-gain value
+ * \return 0 on success otherwise -1 if an error occurred
+ */
+int audio_decode_set_pre_gain(void *handle, float gain)
+{
+    int ret = 0;
+    aml_audio_dec_t *audec = (aml_audio_dec_t *)handle;
+    if (!handle) {
+        adec_print("audio handle is NULL !\n");
+        ret = -1;
+    } else {
+        audec->pre_gain_enable = 1;
+        audec->pre_gain = powf(10, gain/20);
+        adec_print("[%s] set pre-gain[%f] \n", __FUNCTION__, audec->pre_gain);
+    }
+    return ret;
+}
+
+/**
+ * \brief set audio decode pre-mute
+ * \param handle pointer to player private data
+ * \param mute pre-mute value
+ * \return 0 on success otherwise -1 if an error occurred
+ */
+int audio_decode_set_pre_mute(void *handle, uint mute)
+{
+    int ret = 0;
+    aml_audio_dec_t *audec = (aml_audio_dec_t *)handle;
+    if (!handle) {
+        adec_print("audio handle is NULL !\n");
+        ret = -1;
+    } else {
+        audec->pre_mute = mute;
+        adec_print("[%s] set pre-mute[%d] \n", __FUNCTION__, audec->pre_mute);
+    }
+    return ret;
+}
+
+/**
  * \brief set audio volume
  * \param handle pointer to player private data
  * \param vol volume value
@@ -372,6 +417,50 @@ int audio_decode_get_volume(void *handle, float *vol)
     }
 
     *vol = audec->volume;
+
+    return ret;
+}
+
+/**
+ * \brief get audio pre-gain
+ * \param handle pointer to player private data
+ * \param gain pre-gain value
+ * \return 0 on success otherwise -1 if an error occurred
+ */
+int audio_decode_get_pre_gain(void *handle, float *gain)
+{
+    int ret = 0;
+    adec_cmd_t *cmd;
+    aml_audio_dec_t *audec = (aml_audio_dec_t *)handle;
+
+    if (!handle) {
+        adec_print("audio handle is NULL !\n");
+        return -1;
+    }
+
+    *gain = 20*log10f(audec->pre_gain);
+
+    return ret;
+}
+
+/**
+ * \brief get audio decode pre-mute
+ * \param handle pointer to player private data
+ * \param mute pre-mute value
+ * \return 0 on success otherwise -1 if an error occurred
+ */
+int audio_decode_get_pre_mute(void *handle, uint *mute)
+{
+    int ret = 0;
+    adec_cmd_t *cmd;
+    aml_audio_dec_t *audec = (aml_audio_dec_t *)handle;
+
+    if (!handle) {
+        adec_print("audio handle is NULL !\n");
+        return -1;
+    }
+
+    *mute = audec->pre_mute;
 
     return ret;
 }
@@ -515,7 +604,7 @@ int audio_channel_stereo(void *handle)
     return ret;
 }
 
-int audio_channel_lrmix_flag_set(void *handle, int flag)
+int audio_channel_lrmix_flag_set(void *handle, int enable)
 {
     int ret = 0;
     aml_audio_dec_t *audec = (aml_audio_dec_t *)handle;
@@ -523,22 +612,24 @@ int audio_channel_lrmix_flag_set(void *handle, int flag)
         adec_print("audio handle is NULL !\n");
         ret = -1;
     } else {
-        audec->mix_lr_channel_mode = flag;
-        adec_print("[%s] set audec->mix_lr_channel_mode/%d \n", __FUNCTION__, audec->mix_lr_channel_mode);
+        audec->mix_lr_channel_enable = enable;
+		audec->mix_lr_channel_mode = enable;
+        adec_print("[%s] set audec->mix_lr_channel_enable/%d \n", __FUNCTION__, audec->mix_lr_channel_enable);
     }
     return ret;
 }
 
-int audio_decpara_get(void *handle, int *pfs, int *pch)
+int audio_decpara_get(void *handle, int *pfs, int *pch ,int *lfepresent)
 {
     int ret = 0;
     aml_audio_dec_t *audec = (aml_audio_dec_t *)handle;
     if (!handle) {
         adec_print("audio handle is NULL !\n");
         ret = -1;
-    } else if (pfs != NULL && pch != NULL) {
+    } else if (pfs != NULL && pch != NULL && lfepresent != NULL) {
         if (audec->adec_ops != NULL) { //armdecoder case
             *pch = audec->adec_ops->NchOriginal;
+            *lfepresent = audec->adec_ops->lfepresent;
         } else { //DSP case
             *pch = audec->channels;
         }
@@ -598,7 +689,7 @@ int audio_get_decoded_nb_frames(void *handle)
         return -1;
     }
 
-    //audec->decoded_nb_frames = audiodsp_get_decoded_nb_frames(&audec->adsp_ops);
+    audec->decoded_nb_frames = audiodsp_get_decoded_nb_frames(&audec->adsp_ops);
     //adec_print("audio_get_decoded_nb_frames:  %d!", audec->decoded_nb_frames);
     if (audec->decoded_nb_frames >= 0) {
         return audec->decoded_nb_frames;
@@ -606,6 +697,7 @@ int audio_get_decoded_nb_frames(void *handle)
         return -2;
     }
 }
+
 int audio_get_error_nb_frames(void *handle)
 {
     aml_audio_dec_t *audec = (aml_audio_dec_t *)handle;
@@ -781,5 +873,92 @@ int audio_notify(void *handle, int msg, unsigned long ext1, unsigned long ext2){
     }
     return 0;
 
+}
+
+/**
+ * \brief check if the audio format supported by audio decoder
+ * \param handle pointer to player private data
+ * \return 0 = diable,1 = enable, -1 = error
+ */
+int audio_get_format_supported(int format)
+{
+    int enable = 1;
+    if (format == ACODEC_FMT_DRA) {
+        if (access("/system/lib/libdra.so",F_OK)) {
+            enable = 0;
+        }
+    }
+    else if (format < ACODEC_FMT_MPEG || format > ACODEC_FMT_WMAVOI) {
+        adec_print("unsupported format %d\n",format);
+        enable = 0;
+    }
+    return enable;
+}
+int audio_decoder_set_trackrate(void* handle, void *rate)
+{
+    aml_audio_dec_t *audec = (aml_audio_dec_t *)handle;
+    audio_out_operations_t *aout_ops = NULL;
+    if (!audec) {
+        adec_print("audio handle is NULL !\n");
+        return -1;
+    }
+    aout_ops =  &audec->aout_ops;
+    if (aout_ops->set_track_rate)
+        return aout_ops->set_track_rate(audec,rate);
+    return 0;
+}
+
+/**
+ * \brief set audio associate decode en/dis-able
+ * \param handle pointer to player private data
+ * \return 0 =success, -1 = error
+ */
+int audio_set_associate_enable(void* handle, unsigned int enable)
+{
+    int ret = 0;
+    aml_audio_dec_t *audec = (aml_audio_dec_t *)handle;
+    if (!handle) {
+        adec_print("audio handle is NULL !\n");
+        ret = -1;
+    } else {
+        audec->associate_audio_enable = enable;
+        adec_print("[%s]-[associate_audio_enable:%d]\n", __FUNCTION__, audec->associate_audio_enable);
+    }
+    return ret;
+}
+
+/**
+ * \brief send the audio-associate data to destination buffer
+ * \param handle pointer to player private data
+ * \param buf pointer of the destination buffer address
+ * \param size which means that the length of request size
+ * \return [0, size], the length that have writen to destination buffer.
+ * \return -1, handle or other error
+ */
+int audio_send_associate_data(void* handle, uint8_t *buf, size_t size)
+{
+    int ret = 0;
+    aml_audio_dec_t *audec = (aml_audio_dec_t *)handle;
+    if (!handle) {
+        adec_print("audio handle is NULL !\n");
+        ret = -1;
+    } else {
+        if ((audec->associate_dec_supported) && (audec->g_assoc_bst)) {
+            if (audec->associate_audio_enable == 1) {
+                ret = write_es_buffer(buf, audec->g_assoc_bst, size);
+            }
+            else {
+                adec_print("[%s]-[associate_audio_enable:%d]\n", __FUNCTION__, audec->associate_audio_enable);
+                ret = reset_buffer(audec->g_assoc_bst);
+            }
+        }
+        else {
+            adec_print("[%s]-[associate_dec_supported:%d]-[g_assoc_bst:%p]\n",
+                __FUNCTION__, audec->associate_dec_supported, audec->g_assoc_bst);
+            ret = -1;
+        }
+    }
+
+    return ret;
 }
 

@@ -101,6 +101,10 @@ void af_resample_linear_init(struct aml_audio_dec *audec)
         if (property_get("media.libplayer.fillzerothrsh", value, NULL) > 0) {
             audec->fill_trackzero_thrsh = atoi(value);
         }
+        // add for dolby av sync test
+        if (property_get("media.libplayer.dolby_test", value, NULL) > 0) {
+            audec->fill_trackzero_thrsh = 27000;
+        }
         audec->pcrmaster_droppcm_thsh = TIME_UNIT90K / 2;
         if (property_get("media.libplayer.pcrdroppcmthsh", value, NULL) > 0) {
             audec->pcrmaster_droppcm_thsh = atoi(value);
@@ -144,7 +148,7 @@ static int dsp_pcm_read(aml_audio_dec_t*audec, char *data_in, int len)
                 break;
             }
 #else
-            adec_print("can not read out PCM : %d\n", pcm_ret);
+            //adec_print("can not read out PCM : %d\n", pcm_ret);
             break;
 #endif
         }
@@ -170,7 +174,7 @@ static int pcrmaster_dsp_pcm_read(aml_audio_dec_t*audec, char *data_in, int len)
                 break;
             }
 #else
-            adec_print("can not read out PCM : %d\n", pcm_ret);
+            //adec_print("can not read out PCM : %d\n", pcm_ret);
             break;
 #endif
         }
@@ -461,6 +465,18 @@ static void dump_pcm_bin(char *path, char *buf, int size)
     }
 }
 
+//Clip from 16.16 fixed-point to 0.15 fixed-point.
+inline static short clip(int x) {
+    if (x < -32768) {
+        return -32768;
+    } else if (x > 32767) {
+        return 32767;
+    } else {
+        return x;
+    }
+}
+
+
 #define  RESAMPLE_FRAMES  128
 void af_resample_api(char* buffer, unsigned int * size, int Chnum, aml_audio_dec_t* audec, int enable, int delta)
 {
@@ -486,6 +502,8 @@ void af_resample_api(char* buffer, unsigned int * size, int Chnum, aml_audio_dec
     short  *input;
     short  *output;
     unsigned frames = 0;
+    unsigned char ch;
+
     in_sr = (RESAMPLE_FRAMES - 1);
     out_sr = (RESAMPLE_FRAMES - delta - 1);
     phaseIncrement = (float)in_sr / out_sr;
@@ -516,6 +534,7 @@ void af_resample_api(char* buffer, unsigned int * size, int Chnum, aml_audio_dec
             input = (short*)pbuf + frames * Chnum;
             output = (short*)buffer + k * Chnum;
             for (j = 0; j < RESAMPLE_FRAMES - resample_delta; j++) {
+#if 0
                 if (Chnum == 2) {
                     output[2 * j] =   input[index * 2] + (short)((input[(index + 1) * 2] - input[index * 2]) * mPhaseFraction1);
                     output[2 * j + 1] = input[index * 2 + 1] + (short)((input[(index + 1) * 2 + 1] - input[index * 2 + 1]) * mPhaseFraction1);
@@ -525,6 +544,11 @@ void af_resample_api(char* buffer, unsigned int * size, int Chnum, aml_audio_dec
                     adec_print("fatal error,only support 1 ch ,2ch audio sample \n");
                     return ;
                 }
+#else
+                for ( ch=0; ch < Chnum; ch++) {
+                    output[Chnum*j+ch] = clip((int)input[index * Chnum+ch] + (int)((input[(index + 1) * Chnum+ch] - input[index * Chnum+ch]) * mPhaseFraction1));
+                }
+#endif
                 mPhaseFraction += phaseIncrement;
                 index =  mPhaseFraction;
                 mPhaseFraction1 = mPhaseFraction - index;

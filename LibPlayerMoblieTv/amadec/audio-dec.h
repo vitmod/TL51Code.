@@ -101,6 +101,8 @@ typedef void (*fp_arm_omx_codec_pause)(aml_audio_dec_t*);
 typedef int (*fp_arm_omx_codec_get_declen)(aml_audio_dec_t*);
 typedef int (*fp_arm_omx_codec_get_FS)(aml_audio_dec_t*);
 typedef int (*fp_arm_omx_codec_get_Nch)(aml_audio_dec_t*);
+typedef int (*fp_arm_omx_codex_read_assoc_data)(aml_audio_dec_t *,unsigned char *, int, int *);
+
 
 struct aml_audio_dec {
     adec_state_t  state;
@@ -124,6 +126,9 @@ struct aml_audio_dec {
     int avsync_threshold;
     float volume; //left or main volume
     float volume_ext; //right
+    float pre_gain; //gain scope[-12dB,12dB]
+    int pre_gain_enable;
+    uint pre_mute;
     //codec_para_t *pcodec;
     hw_command_t soundtrack;
     audio_out_operations_t aout_ops;
@@ -159,7 +164,7 @@ struct aml_audio_dec {
     int nDecodeErrCount;
     int error_num;
     int fd_uio;
-    int last_valid_pts;
+    uint64_t last_valid_pts;
     int out_len_after_last_valid_pts;
     int pcm_cache_size;
     Package_List pack_list;
@@ -183,6 +188,7 @@ struct aml_audio_dec {
 
     //dvb pcr master
     int fill_trackzero_thrsh;
+    int droppcm_ms;
     int adis_flag;
     int tsync_pcr_dispoint;
     int pcrtsync_enable;
@@ -191,7 +197,8 @@ struct aml_audio_dec {
     int64_t apts64;
     int64_t last_apts64;
     int64_t last_pcrscr64;
-    int mix_lr_channel_mode; //0: stereo, 1: lmono, 2: rmono, 3: lrmix
+	int mix_lr_channel_mode; 
+    int mix_lr_channel_enable;
 
     //code to handle small pts discontinue (1s < diff < 3s )
     int last_discontinue_apts;//the apts when audio has little discontinue
@@ -210,6 +217,12 @@ struct aml_audio_dec {
     int last_digital_raw_state;
 	float left_vol;
 	float right_vol;
+    int associate_dec_supported;//support associate or not
+    unsigned int associate_audio_enable;//control output associate audio
+    buffer_stream_t *g_assoc_bst;
+    fp_arm_omx_codex_read_assoc_data parm_omx_codec_read_assoc_data;
+    int mixing_level;//def=50, mixing level between main and associate, [0,100]
+    int pcm_out_count;
 };
 
 //from amcodec
@@ -232,6 +245,8 @@ typedef struct {
     int player_id;
     int start_no_out;
     int error_num;
+    int associate_dec_supported;//support associate or not
+    int mixing_level;//def=50, mixing level between main and associate, [0,100]
 } arm_audio_info;
 
 typedef struct {
@@ -285,6 +300,7 @@ struct adec_status {
 #define    ACODEC_FMT_APE    20
 #define    ACODEC_FMT_EAC3    21
 #define    ACODEC_FMT_WIFIDISPLAY 22
+#define    ACODEC_FMT_DRA 23
 #define    ACODEC_FMT_TRUEHD 25
 #define    ACODEC_FMT_MPEG1  26  //AFORMAT_MPEG-->mp3,AFORMAT_MPEG1-->mp1,AFROMAT_MPEG2-->mp2
 #define    ACODEC_FMT_MPEG2  27

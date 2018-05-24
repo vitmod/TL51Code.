@@ -105,9 +105,6 @@ void adec_reset_track(aml_audio_dec_t *audec)
         }
         out_ops->init(audec);
         if (audec->state == ACTIVE) {
-		    if (audec->left_vol != 1.0 || audec->right_vol != 1.0) {
-			    out_ops->set_lrvolume(audec,audec->left_vol,audec->right_vol);
-			}
             out_ops->start(audec);
         }
         audec->format_changed_flag = 0;

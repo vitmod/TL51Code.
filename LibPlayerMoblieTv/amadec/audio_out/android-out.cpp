@@ -36,6 +36,9 @@ namespace android
 //android 5.0 level= 20
 #define AUDIO_FORMAT_EAC3 AUDIO_FORMAT_E_AC3
 #endif
+#if ANDROID_PLATFORM_SDK_VERSION >= 23
+#define AUDIO_FORMAT_DTS_MASTER  0x0E000000UL
+#endif
 #define DOLBY_SYSTEM_CHANNEL "ds1.audio.multichannel.support"
 static Mutex mLock;
 static Mutex mLock_raw;
@@ -46,21 +49,23 @@ static int buffering_audio_data = 0;
 static int skip_unnormal_discontinue = 0;
 static int unnormal_discontinue = 0;
 static int unnormal_discontinue1 = 0;
+static int audiostart_systemtime = 0;
+static int raw_delay_ms  = 0;
+static int raw_delay_bytes = 0;
+
+
 extern "C" int get_audio_decoder(void);
+
+
 static int get_digitalraw_mode(void)
 {
 	return amsysfs_get_sysfs_int("/sys/class/audiodsp/digital_raw");
 }
 #define DTSETC_DECODE_VERSION_CORE  350
 #define DTSETC_DECODE_VERSION_M6_M8 380
-#define DTSHD_IEC958_PKTTYPE_CORE      0 //common feature for DTSETC_DECODE_VERSION 350/380,so set it to 0 by default 
+#define DTSHD_IEC958_PKTTYPE_CORE      0 //common feature for DTSETC_DECODE_VERSION 350/380,so set it to 0 by default
 #define DTSHD_IEC958_PKTTYPE_SINGLEI2S 1
 #define DTSHD_IEC958_PKTTYPE_FOURI2S   2
-//TODO:the following to copy defined according to
-//         </system/core/include/system/audio.h>
-//should add to  </system/core/include/system/audio.h> some day
-#define AUDIO_FORMAT_DTS_HD      0x0D000000
-#define AUDIO_FORMAT_DTS_MASTER  0x0E000000
 
 void restore_system_samplerate(struct aml_audio_dec* audec)
 {
@@ -68,16 +73,16 @@ void restore_system_samplerate(struct aml_audio_dec* audec)
     unsigned int sr = 0;
 #else
     int sr = 0;
-#endif 
+#endif
     if( audec->format == ACODEC_FMT_TRUEHD ||
        (audec->format==ACODEC_FMT_DTS && audec->VersionNum==DTSETC_DECODE_VERSION_M6_M8 && audec->DTSHDIEC958_FS>192000 && amsysfs_get_sysfs_int("/sys/class/audiodsp/digital_raw")==2))
     {
         ;//do nothing
     }else if(audec->samplerate == 48000 || (audec->format != ACODEC_FMT_DTS && \
-            audec->format != ACODEC_FMT_AC3 && audec->format != ACODEC_FMT_EAC3 && 
+            audec->format != ACODEC_FMT_AC3 && audec->format != ACODEC_FMT_EAC3 &&
             audec->format != ACODEC_FMT_TRUEHD))
         return ;
-	audio_io_handle_t handle = -1;	
+        audio_io_handle_t handle = -1;
 //for mx, raw/pcm use the same audio hal
 #ifndef USE_ARM_AUDIO_DEC
 	handle = 	AudioSystem::getOutput(AUDIO_STREAM_MUSIC,
@@ -343,30 +348,8 @@ struct am_io_param {
   struct buf_status status;
 };
 
-//static int  mix_lr_channel_mode=0;
-static void lmono_mode_mix(short*buf, int nsamps, int channels)
-{
-    int i;
-    short *p16tmp=(short*)buf;
-
-    if(channels!=2)
-        return;
-    for(i=0; i<nsamps; i+=2) {
-        p16tmp[i+1] = p16tmp[i];
-    }
-}
-static void rmono_mode_mix(short*buf, int nsamps, int channels)
-{
-    int i;
-    short *p16tmp=(short*)buf;
-
-    if(channels!=2)
-        return;
-    for (i=0; i<nsamps; i+=2) {
-        p16tmp[i] = p16tmp[i+1];
-    }
-}
-
+static int  mix_lr_channel_enable=0;
+static int  pre_gain_enable=0;
 static void momo2_mode_mix(short*buf, int nsamps, int channels)
 {
     int i;
@@ -386,7 +369,14 @@ static void momo2_mode_mix(short*buf, int nsamps, int channels)
     }
 }
 
-#define  RESAMPLE_THRESHOLD     (30 * TIME_UNIT90K / 1000)
+static void apply_audio_pregain(void *buf, int size, float gain) {
+    int i;
+    short *sample = (short*)buf;
+    for (i = 0; i < size/sizeof(short); i++)
+        sample[i] = gain*sample[i];
+}
+
+static int  RESAMPLE_THRESHOLD = (500 * TIME_UNIT90K / 1000);
 void audioCallback(int event, void* user, void *info)
 {
     int len, i;
@@ -398,6 +388,9 @@ void audioCallback(int event, void* user, void *info)
     dsp_operations_t *dsp_ops = &audec->adsp_ops;
     unsigned long apts, pcrscr;
 	struct am_io_param am_io;
+    char value[PROPERTY_VALUE_MAX] = {0};
+    int audioout_time;
+    struct timespec timenow;
 
     if (event != AudioTrack::EVENT_MORE_DATA) {
         //adec_refresh_pts(audec);
@@ -421,7 +414,6 @@ void audioCallback(int event, void* user, void *info)
 
         //ioctl(audec->adsp_ops.amstream_fd, AMSTREAM_IOC_GET_LAST_CHECKOUT_APTS, (int)&last_checkout);
     }
-
     if(wfd_enable){
       // filtering
       diff_record[diff_wp++] = diff;
@@ -472,7 +464,7 @@ void audioCallback(int event, void* user, void *info)
  
             if (apts64 && pcrscr64 &&  (abs(apts64 - pcrscr64) <= 90000*60*10)) {
                 ioctl(audec->adsp_ops.amstream_fd, AMSTREAM_IOC_AB_STATUS, (unsigned long)&am_io);
-                adec_print("ab_level=%x, ab_rd_ptr=%x", am_io.status.data_len, am_io.status.read_pointer);
+                //adec_print("ab_level=%x, ab_rd_ptr=%x", am_io.status.data_len, am_io.status.read_pointer);
 
                 if (abs(apts64 - pcrscr64) >= 90000*30 && unnormal_discontinue < 400) {  // avoid replay apts would be pause
                     unnormal_discontinue++;
@@ -505,7 +497,7 @@ void audioCallback(int event, void* user, void *info)
                        unnormal_discontinue = 0;
                        unnormal_discontinue1 = 0;
                 }
-                if ((fill_audiotrack_zero > 0) && ((apts64 - pcrscr64) > (int64_t)(100*TIME_UNIT90K/1000))) {
+                if ((fill_audiotrack_zero > 0) && ((apts64 - pcrscr64) > (int64_t)(70*TIME_UNIT90K/1000))) {
                     fill_audiotrack_zero--;
           
                     if (!fill_audiotrack_zero) {
@@ -519,7 +511,7 @@ void audioCallback(int event, void* user, void *info)
                     adec_print("## %d, %d, apts bigger than pcr, 2222 apts64:%lld, pcrscr64:%lld, diff:%lld, \n", fill_audiotrack_zero, buffering_audio_data, apts64, pcrscr64, apts64-pcrscr64);
                     return;
                 } else {
-                    if (fill_audiotrack_zero > 0 && ((apts64 - pcrscr64) <= (int64_t)(100*TIME_UNIT90K/1000))
+                    if (fill_audiotrack_zero > 0 && ((apts64 - pcrscr64) <= (int64_t)(70*TIME_UNIT90K/1000))
                         && ((apts64 - pcrscr64) > 0)) {
                         fill_audiotrack_zero = 0;
                         adec_pts_resume();
@@ -529,7 +521,22 @@ void audioCallback(int event, void* user, void *info)
                         adec_print("[%s:%d], fill enough! ---------------------------\n",__FUNCTION__, __LINE__);
                     }
                 }
-        
+
+                clock_gettime(CLOCK_MONOTONIC, &timenow);
+                audioout_time = timenow.tv_sec - audiostart_systemtime;
+                if (audioout_time > 60*5)
+                {
+                    RESAMPLE_THRESHOLD = (30 * TIME_UNIT90K / 1000);
+                } else {
+                    memset(value, 0, sizeof(value));
+                    if (property_get("media.amplayer.resample", value, NULL) > 0) {
+                        RESAMPLE_THRESHOLD = atoi(value);
+                    } else
+                        RESAMPLE_THRESHOLD = (30 * TIME_UNIT90K / 1000);
+                }
+
+
+                //adec_print("resample_threshold = %d ms\n", RESAMPLE_THRESHOLD);
                 if (audec->apts64 - audec->last_apts64 > RESAMPLE_THRESHOLD) {
                     int64_t diff_discontinue = abs(pcrscr64 - apts64);
                     if (diff_discontinue > (int64_t)(TIME_UNIT90K * 3)) {
@@ -574,14 +581,21 @@ void audioCallback(int event, void* user, void *info)
         } else {
             af_resample_api_normal((char*)(buffer->i16), (unsigned int*)&buffer->size, channels, audec);
         }
-        if(audec->mix_lr_channel_mode == 0) {
-            //do nothing here for stereo
-        } else if (audec->mix_lr_channel_mode == 1 && channels==2) {
-            lmono_mode_mix((short*)(buffer->i16), buffer->size/2,channels);
-        } else if (audec->mix_lr_channel_mode == 2 && channels==2) {
-            rmono_mode_mix((short*)(buffer->i16), buffer->size/2,channels);
-        } else if (audec->mix_lr_channel_mode == 3 && channels==2) {
-             momo2_mode_mix((short*)(buffer->i16), buffer->size/2,channels);
+        if (!audec->pre_mute) {
+            if (audec->pre_gain_enable >= 0) {
+                pre_gain_enable = audec->pre_gain_enable;
+            }
+            if (pre_gain_enable) {
+                apply_audio_pregain(buffer->i16, buffer->size, audec->pre_gain);
+            }
+            if (audec->mix_lr_channel_enable >= 0)
+                mix_lr_channel_enable = audec->mix_lr_channel_enable;
+            if (mix_lr_channel_enable && channels == 2) {
+                momo2_mode_mix((short*)(buffer->i16), buffer->size/2,channels);
+            }
+        } else {
+            //mute the buffer by pre-mute flag on
+            memset(buffer->i16, 0, buffer->size);
         }
      } else {
         adec_print("audioCallback: dsp not work!\n");
@@ -698,7 +712,7 @@ void audioCallback_raw(int event, void* user, void *info)
     if (audec->adsp_ops.dsp_on) {
          int bytes_cnt=0;
          while(bytes_cnt<buffer->size && !audec->need_stop){
-                 len=audec->adsp_ops.dsp_read_raw(&audec->adsp_ops, (char*)(buffer->i16)+bytes_cnt,buffer->size-bytes_cnt); 
+                 len=audec->adsp_ops.dsp_read_raw(&audec->adsp_ops, (char*)(buffer->i16)+bytes_cnt,buffer->size-bytes_cnt);
                  bytes_cnt+=len;
                  if (len == 0) 
                     break;
@@ -858,19 +872,23 @@ extern "C" int android_init_raw(struct aml_audio_dec* audec)
 
     int SessionID = 0;//audec->SessionID;
     adec_print("[%s %d]SessionID = %d audec->codec_type/%f audec->samplerate/%d",__FUNCTION__,__LINE__,SessionID,audec->codec_type,audec->samplerate);
-        
+    int flags  = AUDIO_OUTPUT_FLAG_DIRECT;
+//only defined from android M
+#if ANDROID_PLATFORM_SDK_VERSION >= 23
+    flags |= AUDIO_OUTPUT_FLAG_IEC958_NONAUDIO;
+#endif
    status = track->set(AUDIO_STREAM_MUSIC,
         SampleRate,
         aformat,
         AUDIO_CHANNEL_OUT_STEREO,
         0,                       // frameCount
-        AUDIO_OUTPUT_FLAG_DIRECT, // flags
+        (audio_output_flags_t)flags,
         audioCallback_raw,
         audec,       // user when callback
         0,           // notificationFrames
         0,           // shared buffer
         false,       // threadCanCallJava
-        SessionID);  // sessionId                        
+        SessionID);  // sessionId
        if (status != NO_ERROR) {
               adec_print("[%s %d]track->set returns %d",__FUNCTION__,__LINE__, status);
               adec_print("[%s %d]audio out samplet  %d",__FUNCTION__,__LINE__, audec->samplerate);
@@ -882,6 +900,7 @@ extern "C" int android_init_raw(struct aml_audio_dec* audec)
               track = NULL;
               mpAudioTrack_raw.clear();
 #endif
+              out_ops->audio_out_raw_enable = 0;
               out_ops->private_data_raw=NULL;
              return -1;
        }
@@ -908,6 +927,8 @@ extern "C" int android_init(struct aml_audio_dec* audec)
     AudioTrack *track;
     audio_out_operations_t *out_ops = &audec->aout_ops;
     char wfd_prop[PROPERTY_VALUE_MAX];
+    audio_output_flags_t Flag = AUDIO_OUTPUT_FLAG_NONE;
+    audio_format_t aformat = AUDIO_FORMAT_PCM_16_BIT;
     fill_audiotrack_zero = 0;
     buffering_audio_data = 0;
     skip_unnormal_discontinue = 0;
@@ -977,17 +998,19 @@ extern "C" int android_init(struct aml_audio_dec* audec)
     //5: rawoutput==2 &&  format==ACODEC_FMT_DTS &&  (FS= =32000||FS = =44100||FS = =88200||FS = =96000|| FS = =176400|| FS = =192000)
     //6: rawoutput==0 &&  format==ACODEC_FMT_AC3 && CH==8
     //summary:always effect in case: rawoutput>0 && (format=ACODEC_FMT_DTS or ACODEC_FMT_AC3) or 8chPCM _output
+/*after 6.0,need not this code*/
+#if ANDROID_PLATFORM_SDK_VERSION < 23
     reset_system_samplerate(audec);
-
-	int user_raw_enable = amsysfs_get_sysfs_int("/sys/class/audiodsp/digital_raw");
+#endif
+    int user_raw_enable = amsysfs_get_sysfs_int("/sys/class/audiodsp/digital_raw");
 #ifdef USE_ARM_AUDIO_DEC
-	out_ops->audio_out_raw_enable = user_raw_enable && (audec->format == ACODEC_FMT_DTS || 
+    out_ops->audio_out_raw_enable = user_raw_enable && (audec->format == ACODEC_FMT_DTS ||
                                                             audec->format == ACODEC_FMT_AC3 ||
                                                             audec->format == ACODEC_FMT_EAC3||
-                                                            audec->format == ACODEC_FMT_TRUEHD);
+                                                            (audec->format == ACODEC_FMT_TRUEHD && user_raw_enable == 2));
     if(out_ops->audio_out_raw_enable)
        android_init_raw(audec);
-#endif	
+#endif
     //---------------------------
     adec_print("[%s %d]android out init",__FUNCTION__,__LINE__);
 #if ANDROID_PLATFORM_SDK_VERSION < 19
@@ -1006,64 +1029,85 @@ extern "C" int android_init(struct aml_audio_dec* audec)
 #if defined(_VERSION_JB)
     char tmp[128]={0};
     int FS_88_96_enable=0;
-    if(property_get("media.libplayer.88_96K", tmp, "0") > 0 && !strcmp(tmp, "1"))
+    if (property_get("media.libplayer.88_96K", tmp, "0") > 0 && !strcmp(tmp, "1")) {
         FS_88_96_enable=1;
-    if( audec->channels == 8 ||
-        (audec->format ==ACODEC_FMT_DTS && audec->samplerate>48000 && user_raw_enable==0 && FS_88_96_enable==1 )
-      )
+        if (audec->format == ACODEC_FMT_DTS && audec->samplerate>48000 && !user_raw_enable)
+        {
+            adec_print("set digital_codec to AUDIO_FORMAT_DTS_PCM_88K_96K");
+            amsysfs_set_sysfs_int("/sys/class/audiodsp/digital_codec",9);
+        }
+    }
+    if ( (audec->channels > 2)  || \
+        (audec->format == ACODEC_FMT_DTS && audec->samplerate>48000 && (user_raw_enable == 0) && (FS_88_96_enable == 1) ))
     {   //8ch PCM: use direct output
         //DTS PCMoutput && FS>48000: use direct output
         audio_channel_mask_t ChMask;
         audio_output_flags_t Flag;
         audio_format_t aformat;
         memset(tmp,0,sizeof(tmp));
-        if(audec->channels == 8){
+        if (audec->channels > 2) {
             adec_print("create multi-channel track use DirectOutput\n");
             property_set(DOLBY_SYSTEM_CHANNEL,"true");
             property_get(DOLBY_SYSTEM_CHANNEL, tmp, "0");
-            if(!strcmp(tmp, "true"))
+            if (!strcmp(tmp, "true"))
             {
                 adec_print("[%s %d]ds1.audio.multichannel.support set success!\n",__FUNCTION__,__LINE__);
-            }else{
+            } else {
                 adec_print("[%s %d]ds1.audio.multichannel.support set fail!\n",__FUNCTION__,__LINE__);
             }
-            ChMask=AUDIO_CHANNEL_OUT_7POINT1;
+            if (audec->channels == 8)
+                ChMask=AUDIO_CHANNEL_OUT_7POINT1;
+            else if (audec->channels == 6)
+                ChMask=AUDIO_CHANNEL_OUT_5POINT1;
+            else if (audec->channels == 4)
+                ChMask = AUDIO_CHANNEL_OUT_QUAD;
+            else if (audec->channels == 3)
+                ChMask = AUDIO_CHANNEL_OUT_FRONT_LEFT|AUDIO_CHANNEL_OUT_FRONT_RIGHT|AUDIO_CHANNEL_OUT_FRONT_CENTER;
             Flag=AUDIO_OUTPUT_FLAG_DEEP_BUFFER;
             aformat=AUDIO_FORMAT_PCM_16_BIT;
-            amsysfs_set_sysfs_int("/sys/class/audiodsp/digital_codec",6);
-        }else{
+        }
+        else {
             adec_print("create HD-PCM(Fs/%d>48000)Direct Ouputtrack\n",audec->samplerate);
             ChMask=AUDIO_CHANNEL_OUT_STEREO;
             Flag =AUDIO_OUTPUT_FLAG_DIRECT;
-            aformat=AUDIO_FORMAT_DTS;
-        }
+//TODO
+#if ANDROID_PLATFORM_SDK_VERSION < 23
+            aformat = AUDIO_FORMAT_DTS;
+#else
+            aformat = AUDIO_FORMAT_PCM_16_BIT;
+#endif
+            }
+            adec_print("<%s::%d>--[ChMask:0x%x]--[Flag:%d]--[aformat:%d]",__FUNCTION__,__LINE__, ChMask, Flag, aformat);
+            status = track->set(AUDIO_STREAM_MUSIC,
+                            audec->samplerate,
+                            aformat,
+                            ChMask,
+                            0,       // frameCount
+                            Flag/*AUDIO_OUTPUT_FLAG_NONE*/, // flags
+                            audioCallback,
+                            audec,    // user when callback
+                            0,       // notificationFrames
+                            0,       // shared buffer
+                            false,   // threadCanCallJava
+                            SessionID);      // sessionId
+    }
+    else {
+        adec_print("<%s::%d>--[Flag:%d]--[aformat:%d]--[channels:%d]",
+            __FUNCTION__,__LINE__, Flag, aformat,(audec->channels == 1) ? AUDIO_CHANNEL_OUT_MONO : AUDIO_CHANNEL_OUT_STEREO);
         status = track->set(AUDIO_STREAM_MUSIC,
                         audec->samplerate,
                         aformat,
-                        ChMask,
-                        0,       // frameCount
-                        Flag/*AUDIO_OUTPUT_FLAG_NONE*/, // flags
-                        audioCallback,
-                        audec,    // user when callback
-                        0,       // notificationFrames
-                        0,       // shared buffer
-                        false,   // threadCanCallJava
-                        SessionID);      // sessionId
-    }else{
-        status = track->set(AUDIO_STREAM_MUSIC,
-                        audec->samplerate,
-                        AUDIO_FORMAT_PCM_16_BIT,
                         (audec->channels == 1) ? AUDIO_CHANNEL_OUT_MONO : AUDIO_CHANNEL_OUT_STEREO,
                         0,       // frameCount
-                        AUDIO_OUTPUT_FLAG_NONE, // flags
+                        Flag, // flags
                         audioCallback,
                         audec,    // user when callback
                         0,       // notificationFrames
                         0,       // shared buffer
                         false,   // threadCanCallJava
                         SessionID);      // sessionId
-		}
-                        
+    }
+
 #elif defined(_VERSION_ICS)
     status = track->set(AUDIO_STREAM_MUSIC,
                         audec->samplerate,
@@ -1165,7 +1209,7 @@ extern "C" int android_start(struct aml_audio_dec* audec)
 #else
     AudioTrack *track = mpAudioTrack.get();
 #endif
-
+    struct timespec timenow;
    
 #ifdef USE_ARM_AUDIO_DEC	
     i2s_iec958_sync_force(audec,0);
@@ -1195,7 +1239,9 @@ extern "C" int android_start(struct aml_audio_dec* audec)
     }
     track->start();
     adec_print("AudioTrack initCheck OK and started.");
-    
+
+    clock_gettime(CLOCK_MONOTONIC, &timenow);
+    audiostart_systemtime = timenow.tv_sec;
     return 0;
 }
 
@@ -1380,7 +1426,10 @@ extern "C" int android_stop(struct aml_audio_dec* audec)
     mpAudioTrack.clear();
 #endif
     out_ops->private_data = NULL;
+/*after 6.0,not need this code*/
+#if ANDROID_PLATFORM_SDK_VERSION < 23
     restore_system_samplerate(audec);
+#endif
     if(wfd_enable){
         restore_system_framesize();
     }	
@@ -1515,8 +1564,29 @@ extern "C" int android_set_lrvolume(struct aml_audio_dec* audec, float lvol,floa
     }
 
     track->setVolume(lvol, rvol);
-    audec->left_vol = lvol;
-	audec->right_vol = rvol;
+
+    return 0;
+}
+extern "C" int android_set_track_rate(struct aml_audio_dec* audec,void *rate)
+{
+#if ANDROID_PLATFORM_SDK_VERSION >= 23
+    Mutex::Autolock _l(mLock);
+    adec_print("android_set_track_rate");
+    struct AudioPlaybackRate  Rate = *(struct AudioPlaybackRate*)rate;
+    audio_out_operations_t *out_ops = &audec->aout_ops;
+#if ANDROID_PLATFORM_SDK_VERSION < 19
+    AudioTrack *track = (AudioTrack *)out_ops->private_data;
+#else
+    AudioTrack *track = mpAudioTrack.get();
+#endif
+    if (!track) {
+        adec_print("No track instance!\n");
+        return -1;
+    }
+
+    track->setPlaybackRate(Rate);
+    out_ops->track_rate = Rate.mSpeed;
+#endif
     return 0;
 }
 
@@ -1525,6 +1595,28 @@ extern "C" void android_basic_init()
     Mutex::Autolock _l(mLock);
     adec_print("android basic init!");
     sp<ProcessState> proc(ProcessState::self());
+}
+
+/*+set audio parameter to audio hal+*/
+extern "C" int android_out_setparameter(struct aml_audio_dec* audec, const char *param)
+{
+    status_t ret = NO_ERROR;
+    audio_io_handle_t handle = -1;
+    handle =  AudioSystem::getOutput(AUDIO_STREAM_MUSIC,
+	                            48000,
+	                            AUDIO_FORMAT_PCM_16_BIT,
+	                            AUDIO_CHANNEL_OUT_STEREO,
+	                            AUDIO_OUTPUT_FLAG_PRIMARY
+					);
+
+    if(handle > 0){
+        adec_print("android_out_setparameter %s\n",param);
+        ret = AudioSystem::setParameters(handle, String8(param));
+        if (ret != NO_ERROR) {
+            adec_print("%s failed,error %d\n",__func__,ret);
+        }
+    }
+    return ret;
 }
 
 /**
@@ -1544,6 +1636,11 @@ extern "C" void get_output_func(struct aml_audio_dec* audec)
     out_ops->mute = android_mute;
     out_ops->set_volume = android_set_volume;
     out_ops->set_lrvolume = android_set_lrvolume;
+    out_ops->set_track_rate = android_set_track_rate;
+    out_ops->out_setparameter = android_out_setparameter;
+    out_ops->audio_out_raw_enable = 1;
+    /* default set a invalid value*/
+    out_ops->track_rate = 8.8f;
 }
 
 }
