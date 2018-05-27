@@ -1668,6 +1668,10 @@ static int av_read_frame_internal(AVFormatContext *s, AVPacket *pkt)
     av_init_packet(pkt);
     for (;;)
     {
+        if (url_interrupt_cb()) {
+            av_log(NULL, AV_LOG_ERROR, "url_interrupt_cb frame_internal 1\n");
+            return AVERROR(EINTR);
+        }
         /* select current input stream component */
         st = s->cur_st;
         if (st)

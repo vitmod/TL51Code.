@@ -633,6 +633,8 @@ static int sync(AVFormatContext *s, int64_t *timestamp, int *flags, int *stream_
 
     while(!url_feof(pb)){
         int len, num, i;
+        if(url_interrupt_cb())
+            return AVERROR(EAGAIN);
         *pos= avio_tell(pb) - 3;
         if(rm->remaining_len > 0){
             num= rm->current_stream;
@@ -944,6 +946,8 @@ static int rm_read_packet(AVFormatContext *s, AVPacket *pkt)
     int64_t timestamp, pos;
     int flags;
     for (;;) {
+        if(url_interrupt_cb())
+            return AVERROR(EAGAIN);
         if (rm->audio_pkt_cnt) {
             // If there are queued audio packet return them first
             st = s->streams[rm->audio_stream_num];
@@ -1059,6 +1063,8 @@ static int64_t rm_read_dts(AVFormatContext *s, int stream_index,
 static int rm_read_seek(AVFormatContext *s,int stream_index, int64_t timestamp, int flags)
 {
     RMDemuxContext *rm = s->priv_data;
+    if (av_seek_frame_binary(s, stream_index, timestamp, flags) < 0)
+        return -1;
     rm->audio_pkt_cnt=0;
     return 0;
 }

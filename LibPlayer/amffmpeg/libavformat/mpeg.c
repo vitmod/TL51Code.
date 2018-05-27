@@ -152,9 +152,9 @@ static int find_next_start_code(AVIOContext *pb, int *size_ptr,
     while (n > 0) {
         if (url_feof(pb))
             break;
-        v = avio_r8(pb);
         if(url_interrupt_cb())
-           return -1;
+          return AVERROR(EINTR);
+        v = avio_r8(pb);
         n--;
         if (state == 0x000001) {
             state = ((state << 8) | v) & 0xffffff;
@@ -260,7 +260,10 @@ static int mpegps_read_pes_header(AVFormatContext *s,
         size = MAX_SYNC_SIZE;
         startcode = find_next_start_code(s->pb, &size, &m->header_state);
         last_sync = avio_tell(s->pb);
-     av_log(s, AV_LOG_INFO, "startcode=%x pos=0x%"PRIx64"\n", startcode, avio_tell(s->pb));
+    //av_log(s,"startcode=%x pos=0x%"PRIx64"\n", startcode, avio_tell(s->pb));
+    if(startcode == AVERROR(EINTR)){
+		return startcode;
+    }
     if (startcode < 0){
         if(url_feof(s->pb) || (s->valid_offset > 0 && last_sync > s->valid_offset))
             return AVERROR_EOF;
