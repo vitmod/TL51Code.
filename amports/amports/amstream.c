@@ -2484,7 +2484,7 @@ static long amstream_do_ioctl_old(struct port_priv_s *priv,
 			((bufs[BUF_TYPE_VIDEO].flag & BUF_FLAG_IN_USE) == 0)) {
 			if (has_hevc_vdec())
 				bufs[BUF_TYPE_HEVC].buf_start = arg;
-			bufs[BUF_TYPE_VIDEO].buf_start = ar	g;
+			bufs[BUF_TYPE_VIDEO].buf_start = arg;
 		} else
 			r = -EINVAL;
 		break;
@@ -3098,11 +3098,11 @@ static long amstream_do_ioctl_old(struct port_priv_s *priv,
 			tsync_set_apts(pts);
 		break;
 	}
-	
 	default:
 		r = -ENOIOCTLCMD;
 		break;
 	}
+
 	return r;
 }
 
