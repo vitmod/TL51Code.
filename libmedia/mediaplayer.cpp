@@ -327,9 +327,11 @@ status_t MediaPlayer::stop()
 {
     ALOGV("stop");
     Mutex::Autolock _l(mLock);
+    ALOGV("mCurrentState =%d mPlayer=%p \n ",mCurrentState,mPlayer);
     if (mCurrentState & MEDIA_PLAYER_STOPPED) return NO_ERROR;
     if ( (mPlayer != 0) && ( mCurrentState & ( MEDIA_PLAYER_STARTED | MEDIA_PLAYER_PREPARED |
                     MEDIA_PLAYER_PAUSED | MEDIA_PLAYER_PLAYBACK_COMPLETE ) ) ) {
+        ALOGV("mPlayer =%p \n",mPlayer);
         status_t ret = mPlayer->stop();
         if (ret != NO_ERROR) {
             mCurrentState = MEDIA_PLAYER_STATE_ERROR;
