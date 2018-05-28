@@ -567,6 +567,7 @@ status_t MediaPlayerService::dump(int fd, const Vector<String16>& args)
 void MediaPlayerService::removeClient(wp<Client> client)
 {
     Mutex::Autolock lock(mLock);
+    ALOGI("Client(%d) destructor pid = %d \n", client->mConnId,client->mPid);
     mClients.remove(client);
 }
 
