@@ -46,6 +46,7 @@ extern "C"
     int get_audio_decoder(void);
     int get_decoder_status(void *p, struct adec_status *adec);
     int get_decoder_info(void *p);
+	int audio_get_basic_info(void *handle, arm_audio_info *a_ainfo);
     int audio_channel_lrmix_flag_set(void *, int enable);
     int audio_decpara_get(void *handle, int *pfs, int *pch,int *lfepresent);
     typedef int (*adec_player_notify_t)(int pid, int msg, unsigned long ext1, unsigned long ext2);
