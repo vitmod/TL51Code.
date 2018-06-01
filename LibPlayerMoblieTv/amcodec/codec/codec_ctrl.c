@@ -1159,7 +1159,8 @@ int codec_get_av_param_info(codec_para_t *p, struct av_param_info_t *av_param_in
         CODEC_PRINT("[codec_get_av_param_info] NULL Pointer\n");
         return -1;
     }
-    r = codec_h_control(p->handle, AMSTREAM_IOC_GET_AVINFO, (unsigned long)av_param_info);
+    //r = codec_h_control(p->handle, AMSTREAM_IOC_GET_AVINFO, (unsigned long)av_param_info);
+	return -1;
     if (r < 0) {
         CODEC_PRINT("[codec_get_av_param_info]error[%d]: %s\n", r, codec_error_msg(system_error_to_codec_error(r)));
     }
