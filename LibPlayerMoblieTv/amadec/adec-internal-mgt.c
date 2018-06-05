@@ -58,6 +58,7 @@ audio_type_t audio_type[] = {
     {ACODEC_FMT_TRUEHD, "thd"},
     {ACODEC_FMT_PCM_S16BE, "pcm"},
     {ACODEC_FMT_PCM_S16LE, "pcm"},
+    {ACODEC_FMT_PCM_S24LE, "pcm"},
     {ACODEC_FMT_PCM_U8, "pcm"},
     {ACODEC_FMT_PCM_BLURAY, "pcm"},
     {ACODEC_FMT_WIFIDISPLAY, "pcm"},
