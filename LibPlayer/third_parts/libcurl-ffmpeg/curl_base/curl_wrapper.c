@@ -553,6 +553,7 @@ static int curl_wrapper_open_cnx(CURLWContext *con, CURLWHandle *h, Curl_Data *b
         curl_wrapper_setopt_error(h, curl_easy_setopt(h->curl, CURLOPT_ACCEPT_ENCODING, "gzip"));
     }
     if (flags == C_PROT_HTTPS) {
+        curl_wrapper_setopt_error(h, curl_easy_setopt(h->curl, CURLOPT_SSL_VERIFYHOST, 1L));
         curl_wrapper_setopt_error(h, curl_easy_setopt(h->curl, CURLOPT_CAINFO, "/etc/curl/cacerts/ca-certificates.crt"));
     }
     curl_wrapper_setopt_error(h, curl_easy_setopt(h->curl, CURLOPT_DEBUGFUNCTION, debug_callback));
