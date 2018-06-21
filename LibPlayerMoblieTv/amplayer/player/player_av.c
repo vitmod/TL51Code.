@@ -680,6 +680,13 @@ void  dump_file_close(void)
         fdw_audio = -1;
     }
 }
+
+/**
+   raw_read；
+   1.we can dump the raw read data;to see the seek point;
+   2.if there are some buffer up we need wait reading process;
+   3.is not segment media;we can seekkeyframe;
+**/
 static int raw_read(play_para_t *para)
 {
     int rev_byte = -1;
@@ -767,7 +774,9 @@ static int raw_read(play_para_t *para)
                 int64_t cur_time = 0;
                 int fd_keyframe = -1;
                 log_print("[%s:%d] old_offset=%lld, \n", __FUNCTION__, __LINE__, old_offset);
-
+                /**
+                media.amplayer.keyframedump
+                **/
                 if ((fd_keyframe == -1) && (am_getconfig_bool("media.amplayer.keyframedump"))) {
                     fd_keyframe = open("/data/temp/keyframe.dat", O_CREAT | O_RDWR, 0666);
 
@@ -775,7 +784,11 @@ static int raw_read(play_para_t *para)
                         log_error("creat %s failed!fd=%d\n", "/data/temp/keyframe.dat", fd_keyframe);
                     }
                 }
-
+                /**
+                    media.amplayer.keyframedump
+                    1.we get cur_offset;we read untils the distance between curl_offset and old offset big than SEEK_KEYFRAME_MAXSIZE;
+                    default we define the offset SEEK_KEYFRAME_MAXSIZE to 8MB;
+                **/
                 do {
                     if (url_interrupt_cb()) {
                         log_print("[%s:%d] interrupted\n",  __FUNCTION__, __LINE__);
@@ -784,7 +797,8 @@ static int raw_read(play_para_t *para)
 
                     cur_offset = avio_tell(pb);
                     cur_time   = gettime();
-
+                    /**
+                    */
                     if (cur_offset - old_offset >= SEEK_KEYFRAME_MAXSIZE || (cur_time - start_time) >= SEEK_KEYFRAME_MAXTIME) {
                         log_error("[%s:%d] seek key frame reached %lld bytes, use %lld us! \n", __FUNCTION__, __LINE__, cur_offset - old_offset, cur_time - start_time);
                         break;
@@ -804,7 +818,10 @@ static int raw_read(play_para_t *para)
                     if (fd_keyframe >= 0) {
                         write(fd_keyframe, pkt->avpkt->data, pkt->avpkt->size);
                     }
-
+                    /**
+                       the only thing we have done is read when this packet is video packet;
+                       for audio we not distingush key or not PKT_FLAG;
+                    **/
                     //log_print("find key frame: rev_byte:%d, stream_index = %d, size = %10d, pos = %lld, pts=%lld, dts=%lld, flags:%d, \n", rev_byte, pkt->avpkt->stream_index, pkt->avpkt->size, pkt->avpkt->pos, pkt->avpkt->pts, pkt->avpkt->dts, pkt->avpkt->flags);
                 } while (!url_feof(pb) && ((pkt->avpkt->stream_index != video_idx) || ((pkt->avpkt->stream_index == video_idx) && !(pkt->avpkt->flags & AV_PKT_FLAG_KEY))));
 
