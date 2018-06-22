@@ -483,6 +483,11 @@ int adec_pts_resume(void)
 static int apts_interrupt = 0;
 static int pcrmaster_droppcm_flag = 0;
 static int pre_filltime = -1;
+
+/**
+   apts_start_flag:when we have get audio pts we think apts_start_flag be ok;
+   pre_filltime--- time we need wait 170ms to 
+**/
 int adec_refresh_pts(aml_audio_dec_t *audec)
 {
     unsigned long pts;
@@ -521,7 +526,7 @@ int adec_refresh_pts(aml_audio_dec_t *audec)
             samplerate = audec->samplerate;
             channels = audec->channels;
         }
-        // 170 ms  audio hal have  triggered the output hw.
+        // 170 ms audio hal have  triggered the output hw.
         latency = audec->aout_ops.latency(audec);
 #if 0
         if (latency > 0  && ((audec->pcm_bytes_readed * 1000 / (samplerate * channels * 2)) >= wait)) {
@@ -549,7 +554,7 @@ int adec_refresh_pts(aml_audio_dec_t *audec)
 
     /* get audio time stamp */
     pts = adec_calc_pts(audec);
-    //adec_print("pts %x,audio start %d\n",pts,audec->apts_start_flag);
+    adec_print("pts %x,audio start %d\n",pts,audec->apts_start_flag);
     if (pts != -1)
         audec->apts_start_flag =  1;
     if (pts != -1 && (apts_start_flag != audec->apts_start_flag)) {
@@ -583,7 +588,7 @@ int adec_refresh_pts(aml_audio_dec_t *audec)
 #if 1
     unsigned int u32_vpts = mysysfs_get_sysfs_int16(TSYNC_VPTS);
     unsigned int last_checkin_apts = mysysfs_get_sysfs_int16(TSYNC_LAST_CHECKIN_APTS);
-    //int play_mode = mysysfs_get_sysfs_int(TSYNC_PCR_PLAY_MODE);
+    int play_mode = mysysfs_get_sysfs_int(TSYNC_PCR_PLAY_MODE);
 
     if (audec->tsync_mode == TSYNC_MODE_PCRMASTER  && audec->pcrtsync_enable
         && ((((int64_t)pts) - audec->last_apts64 > TIME_UNIT90K / 10) || ((int64_t)pts < audec->last_apts64))) {
@@ -603,10 +608,10 @@ int adec_refresh_pts(aml_audio_dec_t *audec)
         }
 
         unsigned int adiff = (unsigned int)((int64_t)last_checkin_apts - apts64);
-        /* adec_print("## tsync_mode:%d, pcr:%llx,apts:%llx, u32_vpts = 0x%x,lastapts:%llx, flag:%d,%d,---\n",
-            audec->tsync_mode, pcrscr64, apts64, u32_vpts, audec->last_apts64, pcrmaster_droppcm_flag, audec->adis_flag); */
-        //adec_print("## tsync_mode:%d,apts:%llx,last_checkin_apts=0x%x,diff=%ld, play_mode=%d\n",
-        //    audec->tsync_mode, apts64, last_checkin_apts, adiff, play_mode);
+        adec_print("## tsync_mode:%d, pcr:%llx,apts:%llx, u32_vpts = 0x%x,lastapts:%llx, flag:%d,%d,---\n",
+            audec->tsync_mode, pcrscr64, apts64, u32_vpts, audec->last_apts64, pcrmaster_droppcm_flag, audec->adis_flag);
+        adec_print("## tsync_mode:%d,apts:%llx,last_checkin_apts=0x%x,diff=%ld, play_mode=%d\n",
+            audec->tsync_mode, apts64, last_checkin_apts, adiff, play_mode);
         // drop pcm
         if (pcrscr64 - apts64 > audec->pcrmaster_droppcm_thsh && abs(pcrscr64 - apts64) < 3 * 90000  && abs(u32_vpts - apts64) >= 45000) {
             if (pcrmaster_droppcm_flag++ > 20) {
