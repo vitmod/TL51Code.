@@ -1,3 +1,4 @@
+
 /***************************************************
  * name     : player_update.c
  * function : update player parameters, information, status etc.
@@ -52,6 +53,7 @@ static int set_stream_info(play_para_t *p_para)
     info->total_video_num   = p_para->vstream_num;
     info->total_audio_num   = p_para->astream_num;
     info->total_sub_num     = p_para->sstream_num;
+	log_print("set stream info,current bitrate id:%d\n", info->bitrate);
     if ((p_para->file_type == AVI_FILE && !ctx->seekable) ||
         (p_para->file_type == MKV_FILE && !ctx->support_seek) ||
         (p_para->file_type == H264_FILE)) {
@@ -1297,8 +1299,8 @@ static void check_force_end(play_para_t *p_para, struct buf_status *vbuf, struct
                 }
             }
             if (p_para->check_end.end_count <= 0 && 
-				p_para->playctrl_info.hls_forward == 0 &&
-				p_para->playctrl_info.hls_backward == 0) {
+                p_para->playctrl_info.hls_forward == 0 &&
+                p_para->playctrl_info.hls_backward == 0) {
                 if (!p_para->playctrl_info.video_end_flag) {
                     p_para->playctrl_info.video_end_flag = 1;
                     log_print("[check_force_end]video force end!v:%d vlen=%d count=%d\n", p_para->vstream_info.has_video, vbuf->data_len, p_para->check_end.end_count);
@@ -2314,12 +2316,16 @@ static int player_report_para(play_para_t *p_para,
     if(check_time_interrupt(&p_para->media_info.report_para.last_report_time, p_para->media_info.report_para.report_period_ms)) {
         update_report_para(p_para, vbuf, abuf, &av_param_info);
         send_event(p_para, PLAYER_EVENTS_PLAYER_PARAM_REPORT, 0, 0);
-		p_para->media_info.report_para.last_report_time = av_gettime()/1000;
+        p_para->media_info.report_para.last_report_time = av_gettime()/1000;
     }
 
     return 0;
 }
-
+/***
+   this file we have only two place to call this function;
+   first:check_avbuff_end; second:check_force_end; all related to the avbuf;
+   the most important place to locate is the big loop in player.c;
+**/
 int update_playing_info(play_para_t *p_para)
 {
     struct buf_status vbuf, abuf;
@@ -2494,6 +2500,11 @@ int update_playing_info(play_para_t *p_para)
     return PLAYER_SUCCESS;
 }
 
+/**
+   the interval to update_player_time; 1000ms;
+   one prop to control bufferstart is no_buffering_start;
+   in player.c;
+**/
 int     update_player_cachetime(play_para_t *p_para,
                                     struct buf_status *vbuf,
                                     struct buf_status *abuf)
