@@ -4022,6 +4022,20 @@ audio_init:
         log_print("[%s:%d]vidx=%d sidx=%d\n", __FUNCTION__, __LINE__, para->vstream_info.video_index, para->sstream_info.sub_index);
         para->playctrl_info.audio_switch_vmatch = 0;
         para->playctrl_info.audio_switch_smatch = 0;
+        if (para->p_pkt->avpkt_isvalid) {
+            if (avPkt->stream_index == para->vstream_info.video_index) {
+                int max_write = 10;
+                do {/*if  have vide data,finished write it.*/
+                   write_av_packet(para);
+                } while(max_write-- >= 0 && para->p_pkt->avpkt_isvalid);
+            }
+            if (para->p_pkt->avpkt_isvalid) {
+                av_free_packet(para->p_pkt->avpkt);
+            }
+            para->p_pkt->avpkt_isvalid = 0;
+            para->p_pkt->avpkt_newflag = 0;
+            para->p_pkt->data_size = 0;
+        }
 
         /* find the next video packet and save it */
         while (!para->playctrl_info.read_end_flag) {
