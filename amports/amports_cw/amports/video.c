@@ -829,6 +829,7 @@ u32 trickmode_fffb = 0;
 atomic_t trickmode_framedone = ATOMIC_INIT(0);
 atomic_t video_sizechange = ATOMIC_INIT(0);
 atomic_t video_unreg_flag = ATOMIC_INIT(0);
+atomic_t video_inirq_flag = ATOMIC_INIT(0);
 atomic_t video_pause_flag = ATOMIC_INIT(0);
 int trickmode_duration = 0;
 int trickmode_duration_count = 0;
@@ -4171,9 +4172,9 @@ static void dmc_adjust_for_mali_vpu(unsigned int width, unsigned int height)
 }
 
 #ifdef FIQ_VSYNC
-void vsync_fisr(void)
+void vsync_fisr_in(void)
 #else
-static irqreturn_t vsync_isr(int irq, void *dev_id)
+static irqreturn_t vsync_isr_in(int irq, void *dev_id)
 #endif
 {
 	int hold_line;
@@ -5497,6 +5498,23 @@ cur_dev->vpp_off,0,VPP_VD2_ALPHA_BIT,9);//vd2 alpha must set
 }
 
 
+#ifdef FIQ_VSYNC
+void vsync_fisr(void)
+{
+	atomic_set(&video_inirq_flag, 1);
+	vsync_fisr_in();
+	atomic_set(&video_inirq_flag, 0);
+}
+#else
+static irqreturn_t vsync_isr(int irq, void *dev_id)
+{
+	irqreturn_t ret;
+	atomic_set(&video_inirq_flag, 1);
+	ret = vsync_isr_in(irq, dev_id);
+	atomic_set(&video_inirq_flag, 0);
+	return ret;
+}
+#endif
 
 
 /*********************************************************
@@ -5593,6 +5611,8 @@ static void video_vf_unreg_provider(void)
 	first_frame_toggled = 0;
 
 	atomic_set(&video_unreg_flag, 1);
+	while (atomic_read(&video_inirq_flag) > 0)
+		schedule();
 	spin_lock_irqsave(&lock, flags);
 
 #ifdef CONFIG_VSYNC_RDMA
@@ -5663,9 +5683,16 @@ static void video_vf_unreg_provider(void)
 	show_first_frame_nosync = false;
 }
 
-static void video_vf_light_unreg_provider(void)
+static void video_vf_light_unreg_provider(int need_keep_frame)
 {
 	ulong flags;
+
+	if (need_keep_frame) {
+		/* wait for the end of the last toggled frame*/
+		atomic_set(&video_unreg_flag, 1);
+		while (atomic_read(&video_inirq_flag) > 0)
+			schedule();
+	}
 
 	spin_lock_irqsave(&lock, flags);
 #ifdef CONFIG_VSYNC_RDMA
@@ -5698,6 +5725,13 @@ static void video_vf_light_unreg_provider(void)
 #endif
 	pr_info("play exit -------------222\n");
 	spin_unlock_irqrestore(&lock, flags);
+
+	if (need_keep_frame) {
+		/* keep the last toggled frame*/
+		if (cur_dispbuf)
+			vf_keep_current(cur_dispbuf, NULL);
+		atomic_set(&video_unreg_flag, 0);
+	}
 }
 
 static int  get_display_info(void *data)
@@ -5749,9 +5783,9 @@ static int video_receiver_event_fun(int type, void *data, void *private_data)
 		receive_frame_count = 0;
 		display_frame_count = 0;
 	} else if (type == VFRAME_EVENT_PROVIDER_RESET) {
-		video_vf_light_unreg_provider();
+		video_vf_light_unreg_provider(1);
 	} else if (type == VFRAME_EVENT_PROVIDER_LIGHT_UNREG)
-		video_vf_light_unreg_provider();
+		video_vf_light_unreg_provider(0);
 	else if (type == VFRAME_EVENT_PROVIDER_REG) {
 		enable_video_discontinue_report = 1;
 		drop_frame_count = 0;
@@ -5777,7 +5811,7 @@ alternative mode,passing two buffer in one frame */
 				(void *)1);
 		}
 
-		video_vf_light_unreg_provider();
+		video_vf_light_unreg_provider(0);
 	} else if (type == VFRAME_EVENT_PROVIDER_FORCE_BLACKOUT) {
 		force_blackout = 1;
 		if (debug_flag & DEBUG_FLAG_BLACKOUT) {
