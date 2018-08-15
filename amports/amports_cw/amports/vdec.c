@@ -205,8 +205,9 @@ int vdec_status(struct vdec_s *vdec, struct vdec_info *vstatus)
 int vdec_set_trickmode(struct vdec_s *vdec, unsigned long trickmode)
 {
 	int r;
-
+    pr_info("[%d:%s]\n",__LINE__,__FUNCTION__);
 	if (vdec->set_trickmode) {
+		pr_info("[%d:%s]\n",__LINE__,__FUNCTION__);
 		r = vdec->set_trickmode(vdec, trickmode);
 
 		if ((r == 0) && (vdec->slave) && (vdec->slave->set_trickmode))

@@ -2242,6 +2242,7 @@ static long amstream_ioctl_set(struct port_priv_s *priv, ulong arg)
 	case AMSTREAM_SET_TRICKMODE:
 		if ((this->type & PORT_TYPE_VIDEO) == 0)
 			return -EINVAL;
+		pr_info("[%d:%s]\n",__LINE__,__FUNCTION__);
 		r = vdec_set_trickmode(priv->vdec, parm.data_32);
 		if (r == -1)
 			return -ENODEV;

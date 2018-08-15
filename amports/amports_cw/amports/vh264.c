@@ -2493,8 +2493,10 @@ int vh264_set_trickmode(struct vdec_s *vdec, unsigned long trickmode)
 		WRITE_VREG(AV_SCRATCH_F,
 				   (READ_VREG(AV_SCRATCH_F) & 0xfffffffc) | 2);
 		trickmode_i = 1;
+		pr_info("[%d:%s]\n",__LINE__,__FUNCTION__);
 	} else if (trickmode == TRICKMODE_NONE) {
 		WRITE_VREG(AV_SCRATCH_F, READ_VREG(AV_SCRATCH_F) & 0xfffffffc);
+		pr_info("[%d:%s]\n",__LINE__,__FUNCTION__);
 		trickmode_i = 0;
 	}
 
