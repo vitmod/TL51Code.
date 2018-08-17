@@ -22,6 +22,7 @@
 #include "iristruecut.h"
 
 #define WRITE_BLOCK_TIMEOUT_MS  1000
+#define DEFAULT_SUBTITLE_BUFFER_SIZE     (1024*256*2)
 
 #define DUMP_READ_RAW_DATA     (1<<0)
 #define DUMP_WRITE_RAW_DATA   (1<<1)
@@ -1228,7 +1229,6 @@ static int non_raw_read(play_para_t *para)
                 if (fdr_audio == -1) {
                     sprintf(dump_path, "%s/pid%d_dump_aread.dat", dump_dir, para->player_id);
                     fdr_audio = open(dump_path, O_CREAT | O_RDWR, 0666);
-
                     if (fdr_audio < 0) {
                         log_error("creat %s failed!fd=%d\n", dump_path, fdr_audio);
                     }
@@ -2407,7 +2407,7 @@ int write_av_packet(play_para_t *para)
         pkt->data_size = 0;
         return PLAYER_SUCCESS;
     }
-
+    log_print("[%d:%s] write_av_packet \n",__LINE__,__FUNCTION__);
     if (am_getconfig_float("media.libplayer.dumpmode", &value) == 0) {
         dump_data_mode = (int)value;
     }
@@ -2453,14 +2453,16 @@ int write_av_packet(play_para_t *para)
         pkt->avpkt_isvalid = 0;
         return PLAYER_SUCCESS;
     }
-
+    log_print("[%d:%s] write_av_packet \n",__LINE__,__FUNCTION__);
     //new packet
     if (pkt->avpkt_newflag) {
+        log_print("[%d:%s] write_av_packet \n",__LINE__,__FUNCTION__);
         if (pkt->type != CODEC_SUBTITLE) {
             if (pkt->avpkt_isvalid) {
                 if (!pkt->pts_checkin_ok) {
+					log_print("[%d:%s] write_av_packet \n",__LINE__,__FUNCTION__);
                     ret = check_in_pts(para);
-
+                    log_print("[%d:%s] write_av_packet \n",__LINE__,__FUNCTION__);
                     if (ret != PLAYER_SUCCESS) {
                         log_error("check in pts failed\n");
                         return PLAYER_WR_FAILED;
@@ -2469,9 +2471,9 @@ int write_av_packet(play_para_t *para)
                     pkt->pts_checkin_ok = 1;
                 }
             }
-
+            log_print("[%d:%s] write_av_packet \n",__LINE__,__FUNCTION__);
             ret = write_header(para);
-
+            
             if (ret == PLAYER_WR_FAILED) {
                 log_error("[%s]write header failed!\n", __FUNCTION__);
                 return PLAYER_WR_FAILED;
@@ -2484,12 +2486,13 @@ int write_av_packet(play_para_t *para)
                 return PLAYER_SUCCESS;
             }
         } else {
+            log_print("[%d:%s] write_av_packet \n",__LINE__,__FUNCTION__);
             process_es_subtitle(para);
         }
-
+        log_print("[%d:%s] write_av_packet \n",__LINE__,__FUNCTION__);
         pkt->avpkt_newflag = 0;
     }
-
+    log_print("[%d:%s] write_av_packet \n",__LINE__,__FUNCTION__);
     buf = pkt->data;
     size = pkt->data_size ;
 
@@ -2523,7 +2526,7 @@ int write_av_packet(play_para_t *para)
             if (write_bytes < 0 || write_bytes > nCurrentWriteCount) {
                 if (-errno != AVERROR(EAGAIN)) {
                     para->playctrl_info.check_lowlevel_eagain_time = player_get_systemtime_ms();
-                    log_print("write codec data failed! ret=%d,errno=%d\n", write_bytes, errno);
+                    log_print("Audio write codec data failed! ret=%d,errno=%d\n", write_bytes, errno);
                     return PLAYER_WR_FAILED;
                 } else {
                     /* EAGAIN to see if buffer full or write time out too much */
@@ -2608,16 +2611,18 @@ int write_av_packet(play_para_t *para)
 
                 pkt->avpkt_isvalid = 0;
                 pkt->data_size = 0;
-                //log_print("[%s:%d]write finish pkt->data_size=%d\r",__FUNCTION__, __LINE__,pkt->data_size);
+                log_print("[%s:%d]write finish pkt->data_size=%d\r",__FUNCTION__, __LINE__,pkt->data_size);
                 break;
             } else if (len < pkt->data_size) {
                 buf += write_bytes;
                 size -= write_bytes;
+			    log_print("[%d:%s] write_av_packet size =%d \n",__LINE__,__FUNCTION__,size);
             } else {
                 return PLAYER_WR_FAILED;
             }
         }
     } else {
+		log_print("[%d:%s] write_av_packet size =%d pkt->avpkt_isvalid=%d \n",__LINE__,__FUNCTION__,size,pkt->avpkt_isvalid);
         while (size > 0 && pkt->avpkt_isvalid) {
             if (buf_limited_time_ms && (get_av_delay_ms(para) > buf_limited_time_ms) && (get_avbuf_min_size(para) > 0x400)) {
                 if (!para->enable_rw_on_pause) {
@@ -2629,7 +2634,7 @@ int write_av_packet(play_para_t *para)
             }
             if ((pkt->type == CODEC_SUBTITLE) && (!am_getconfig_bool("media.amplayer.sublowmem"))) {
                 int i;
-
+                log_print("[%d:%s] write_av_packet size =%d pkt->avpkt_isvalid=%d \n",__LINE__,__FUNCTION__,size,pkt->avpkt_isvalid);
                 //log_print("## 111 [%s:%d]i = %d, pkt->avpkt->stream_index = %d, \n", __FUNCTION__, __LINE__, i, pkt->avpkt->stream_index);
                 for (i = 0; i < para->sstream_num; i++) {
                     //subid should be equal to stream->id
@@ -2651,7 +2656,7 @@ int write_av_packet(play_para_t *para)
                 pkt->data_size = 0;
                 break;
             }
-
+            log_print("[%d:%s] write_av_packet size =%d pkt->avpkt_isvalid=%d \n",__LINE__,__FUNCTION__,size,pkt->avpkt_isvalid);
             /*
             * add two property media.amplayer.vbufthreshold and media.amplayer.abufthreshold to control the a-v-buf data
             * level, for some raw read file, the audio data would be dropped after switch audio stream, if the abuf level is too big,
@@ -2680,8 +2685,8 @@ int write_av_packet(play_para_t *para)
                     return PLAYER_SUCCESS;
                 }
             }
-
-#if 1//PXLW_IRIS_TRUECUT_SUPPORT
+            log_print("[%d:%s] write_av_packet size =%d pkt->avpkt_isvalid=%d \n",__LINE__,__FUNCTION__,size,pkt->avpkt_isvalid);
+#if 0//PXLW_IRIS_TRUECUT_SUPPORT
             {
                 PWTcPacket tcPacket = {0};
                 if (pkt->codec->video_type == VFORMAT_H264)
@@ -2698,10 +2703,11 @@ int write_av_packet(play_para_t *para)
             } 
 #endif
             write_bytes = codec_write(pkt->codec, (char *)buf, size);
+            log_print("[%d:%s] write_av_packet size =%d pkt->avpkt_isvalid=%d \n",__LINE__,__FUNCTION__,size,pkt->avpkt_isvalid);
             if (write_bytes < 0 || write_bytes > size) {
                 if (-errno != AVERROR(EAGAIN)) {
                     para->playctrl_info.check_lowlevel_eagain_time = 0;
-                    log_print("write codec data failed! ret=%d,errno=%d\n", write_bytes, errno);
+                    log_print("write codec data failed! ret=%d,errno=%d, pkt->type=%d\n", write_bytes, errno,pkt->type);
                     return PLAYER_WR_FAILED;
                 } else {
                     /* EAGAIN to see if buffer full or write time out too much */
@@ -2712,7 +2718,7 @@ int write_av_packet(play_para_t *para)
                     } else {
                         para->playctrl_info.check_lowlevel_eagain_time = 0;
                     }
-
+					log_print("[%d:%s] write_av_packet size =%d pkt->avpkt_isvalid=%d \n",__LINE__,__FUNCTION__,size,pkt->avpkt_isvalid);
                     if (para->playctrl_info.check_lowlevel_eagain_time != 0 &&
                         check_time_interrupt(&para->playctrl_info.check_lowlevel_eagain_time, WRITE_BLOCK_TIMEOUT_MS)) {
                         /* reset decoder */
@@ -2751,7 +2757,7 @@ int write_av_packet(play_para_t *para)
                 }
             } else {
                 int dsize;
-
+                log_print("[%d:%s] write_av_packet size =%d pkt->avpkt_isvalid=%d \n",__LINE__,__FUNCTION__,size,pkt->avpkt_isvalid);
                 if (fdw_raw >= 0 && pkt->type == CODEC_COMPLEX) {
                     dsize = write(fdw_raw, buf, write_bytes);
                 } else {
@@ -2772,7 +2778,7 @@ int write_av_packet(play_para_t *para)
                 // log_print("[%s:%d]dump data write size=%d, want len=%d\n", __FUNCTION__, __LINE__, size, len);
                 para->playctrl_info.check_lowlevel_eagain_time = 0;
                 len += write_bytes;
-
+                
                 if (len == pkt->data_size) {
                     if ((pkt->type == CODEC_VIDEO) && (!para->playctrl_info.raw_mode)) {
                         para->write_size.vpkt_num ++;
@@ -2790,18 +2796,19 @@ int write_av_packet(play_para_t *para)
 
                     pkt->avpkt_isvalid = 0;
                     pkt->data_size = 0;
-                    //log_print("[%s:%d]write finish pkt->data_size=%d\r",__FUNCTION__, __LINE__,pkt->data_size);
+                    log_print("[%s:%d]write finish pkt->data_size=%d\r",__FUNCTION__, __LINE__,pkt->data_size);
                     break;
                 } else if (len < pkt->data_size) {
                     buf += write_bytes;
                     size -= write_bytes;
+					log_print("[%d:%s] write_av_packet size =%d pkt->avpkt_isvalid=%d \n",__LINE__,__FUNCTION__,size,pkt->avpkt_isvalid);
                 } else {
                     return PLAYER_WR_FAILED;
                 }
             }
         }
     }
-
+	log_print("[%d:%s] write_av_packet size =%d pkt->avpkt_isvalid=%d \n",__LINE__,__FUNCTION__,size,pkt->avpkt_isvalid);
     if (check_write_finish(para) == PLAYER_WR_FINISH) {
         if (para->vstream_info.has_video && ((para->stream_type == STREAM_ES) || (para->stream_type == STREAM_VIDEO))
             && (para->vstream_info.video_format == VFORMAT_H264)) {
@@ -3498,7 +3505,9 @@ int write_sub_data(am_packet_t *pkt, char *buf, unsigned int length)
 {
     int write_bytes, size;
     unsigned int len = 0;
-
+    unsigned int retry_times = 50;
+	unsigned int subtitle_size = 0;
+	float sub_level =0;
     if (!pkt || !pkt->codec) {
         return 0;
     }
@@ -3516,20 +3525,20 @@ int write_sub_data(am_packet_t *pkt, char *buf, unsigned int length)
     }
 #endif
     size = length;
-
     while (size > 0) {
         write_bytes = codec_write_sub_data(pkt->codec, buf, size);
-
+        subtitle_size = codec_get_sub_size(pkt->codec);
+		sub_level = (float) subtitle_size / DEFAULT_SUBTITLE_BUFFER_SIZE;
         if (write_bytes < 0) {
             if (-errno != AVERROR(EAGAIN)) {
-                log_print("[%s:%d]write sub data failed!\n", __FUNCTION__, __LINE__);
                 return PLAYER_WR_FAILED;
-            } else {
+            } else if (sub_level < 0.98  && retry_times--) {
                 if (amthreadpool_on_requare_exit(0)) {
                     return PLAYER_WR_FAILED;
                 }
-
                 continue;
+            } else {
+               return PLAYER_WR_FAILED;
             }
         } else {
             len += write_bytes;
@@ -3641,8 +3650,8 @@ int process_es_subtitle(play_para_t *para)
     sub_header[18] = (para->sstream_info.last_duration >> 8) & 0xff;
     sub_header[19] = para->sstream_info.last_duration & 0xff;
 
-    log_print("## [ sub_type:0x%x,   data_size:%d,  sub_pts:%lld last_duration %d]\n", sub_type , data_size, sub_pts, para->sstream_info.last_duration);
-    log_print("## [ sizeof:%d , sub_index=%d, pkt_stream_index=%d,]\n", sizeof(sub_header), para->sstream_info.sub_index, pkt->avpkt->stream_index);
+    //log_print("## [ sub_type:0x%x,   data_size:%d,  sub_pts:%lld last_duration %d]\n", sub_type , data_size, sub_pts, para->sstream_info.last_duration);
+    //log_print("## [ sizeof:%d , sub_index=%d, pkt_stream_index=%d,]\n", sizeof(sub_header), para->sstream_info.sub_index, pkt->avpkt->stream_index);
 
     if (para->sstream_info.sub_index == pkt->avpkt->stream_index) {
         if (write_sub_data(pkt, (char *)&sub_header, sizeof(sub_header))) {
@@ -3998,8 +4007,8 @@ audio_init:
         }
 
         pcodec->audio_info.valid = 1;
-        log_print("[%s]fmt=%d srate=%d chanels=%d extrasize=%d\n", __FUNCTION__, pcodec->audio_type, \
-                  pcodec->audio_info.sample_rate, pcodec->audio_info.channels, pcodec->audio_info.extradata_size);
+        log_print("[%s]fmt=%d srate=%d chanels=%d extrasize=%d\n", __FUNCTION__, pcodec->audio_type, 
+        pcodec->audio_info.sample_rate, pcodec->audio_info.channels, pcodec->audio_info.extradata_size);
     } else {
         pcodec->audio_info.valid = 0;
     }
@@ -4025,7 +4034,8 @@ audio_init:
         if (para->p_pkt->avpkt_isvalid) {
             if (avPkt->stream_index == para->vstream_info.video_index) {
                 int max_write = 10;
-                do {/*if  have vide data,finished write it.*/
+                do {/*if  have video data,finished write it.*/
+				   log_print("[%s:%d]reset audio failed max_write=%d \n", __FUNCTION__, __LINE__,max_write);
                    write_av_packet(para);
                 } while(max_write-- >= 0 && para->p_pkt->avpkt_isvalid);
             }
