@@ -2168,6 +2168,8 @@ void *player_thread(play_para_t *player)
 
             }
             if (player->playctrl_info.trick_wait_time > gettime()) {
+				log_print("trick_wait_time =%d,full_time=%d\n",
+						player->playctrl_info.trick_wait_time,gettime());
                 continue;
             } else if (player->playctrl_info.trick_wait_flag) {
                 break;
@@ -2234,7 +2236,7 @@ void *player_thread(play_para_t *player)
                         }	
                   }
            }
-
+			log_print("audio switch pkt->avpkt_isvalid=%d \n",pkt->avpkt_isvalid);
             if (!pkt->avpkt_isvalid) {
                 if(am_getconfig_bool("media.amplayer.stepplay") && 
                     amsysfs_get_sysfs_int("/sys/module/amvideo/parameters/amplayer_enable")) {
@@ -2261,6 +2263,7 @@ void *player_thread(play_para_t *player)
                     }
                 }else
                 ret = read_av_packet(player);
+				log_print("audio switch read_av_packet \n");
                 if (ret != PLAYER_SUCCESS && ret != PLAYER_RD_AGAIN) {
                     if (player->playctrl_info.hls_force_exit != 1 && (ret == PLAYER_RD_FAILED || ret == PLAYER_RD_TIMEOUT)) {
                         ret = (check_to_retry(player) == 0) ? PLAYER_RD_AGAIN : ret;
@@ -2379,7 +2382,9 @@ write_packet:
 					&& (player->playctrl_info.amstream_highlevel == 1 || (pkt && pkt->data_size == 0))) {
 					//do nothing
 				} else {
+				    log_print("audio switch write_av_packet enter\n");
 					ret = write_av_packet(player);
+					log_print("audio switch write_av_packet out\n");
 	                if (ret == PLAYER_WR_FINISH) {
 	                    if (player->playctrl_info.f_step == 0) {
 	                        log_print("[player_thread]write end!\n");
@@ -2394,6 +2399,7 @@ write_packet:
             }
             update_playing_info(player);
             update_player_states(player, 0);
+			log_print("audio switch update_player_states 0\n");
             if (check_decoder_worksta(player) != PLAYER_SUCCESS) {
                 log_error("pid[%d]::check decoder work status error!\n", player->player_id);
                 set_player_state(player, PLAYER_ERROR);
@@ -2544,7 +2550,7 @@ write_packet:
             check_avdiff_status(player);
 #endif
         } while (!player->playctrl_info.end_flag);
-
+        log_print("audio switch update_player_states 0\n");
         if ((player->playctrl_info.trick_wait_time > gettime()) && (player->playctrl_info.f_step != 0) && 
 			(player->playctrl_info.hls_forward  == 0) && (player->playctrl_info.hls_backward == 0)) {
             continue;
@@ -2566,6 +2572,7 @@ write_packet:
             } else if (ret == CONTINUE_FLAG) {
 				/*wujiaxi added for send MEDIA_PRELOAD message while player paused in here*/
             	update_playing_info(player);
+				log_print("[%s:%d] audio switch\n", __FUNCTION__, __LINE__);
 				player_thread_wait(player, 50 * 1000);
                 continue;
             }
@@ -2622,6 +2629,7 @@ write_packet:
                 update_playing_info(player);
                 update_player_states(player, 1);
             }
+			log_print("[%d]set player_pkt->avpkt_isvalid\n",__LINE__);
             player_switch_para(player);
             if (player->playctrl_info.cache_enable == 1) {
                 if (player->playctrl_info.pause_cache == 0) {
@@ -2646,9 +2654,11 @@ write_packet:
                 am_packet_t * player_pkt = player->p_pkt;
                 player_para_reset(player);
                 player_pkt->avpkt_isvalid = 0;
+				log_print("audio switch player_pkt->avpkt_isvalid\n");
                 player_pkt->avpkt_newflag = 0;
                 player_pkt->data_size  = 0;
             } else {
+                log_print("audio switch player_reset\n");
                 ret = player_reset(player);
                 if (ret != PLAYER_SUCCESS) {
                     log_error("pid[%d]::player reset failed(-0x%x)!", player->player_id, -ret);

@@ -1166,13 +1166,13 @@ static void get_stream_info(play_para_t *p_para)
         p_para->astream_info.audio_format = -1;
     }
 
-
+    p_para->sstream_num = 0;
     if (p_para->sstream_num >= 1) {
         p_para->sstream_info.has_sub = 1;
     } else {
         p_para->sstream_info.has_sub = 0;
     }
-
+    
     if ((p_para->vstream_num >= 1) ||
         (p_para->astream_num >= 1) ||
         (p_para->sstream_num >= 1)) {
@@ -1469,7 +1469,7 @@ static int set_decode_para(play_para_t*am_p)
 
     am_p->sstream_info.has_sub &= am_p->playctrl_info.has_sub_flag;
     am_p->astream_info.resume_audio = am_p->astream_info.has_audio;
-
+    am_p->sstream_info.has_sub = 0;
     if (am_p->vstream_info.has_video == 0) {
         am_p->playctrl_info.video_end_flag = 1;
     }
