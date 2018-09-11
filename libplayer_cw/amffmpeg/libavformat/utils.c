@@ -70,7 +70,7 @@
 #define CHECK_FULL_ZERO_SIZE DURATION_MAX_READ_SIZE
 #define RETRY_CHECK_MAX 14 //check size 150000*1024*16
 #define ERROR_URL_NOT_M3U8    123456
-
+#define dumpProbe
 /**
  * @file
  * various utility functions for use within FFmpeg
@@ -594,6 +594,7 @@ int av_probe_input_buffer(AVIOContext *pb, AVInputFormat **fmt,
     int pre_data = 0;
     int probe_flag = 0;
     int64_t oldoffset;
+	int probeoffset;
     int64_t old_dataoff;
     AVFormatContext *s = logctx;
     int maxretry = 0;
@@ -607,7 +608,7 @@ int av_probe_input_buffer(AVIOContext *pb, AVInputFormat **fmt,
         probe_time_s = atoi(prop_value);
     }
 
-    av_log(NULL, AV_LOG_INFO, "%s:size=%lld\n", pd.filename, filesize);
+    av_log(NULL, AV_LOG_WARNING, "%s:size=%lld\n", pd.filename, filesize);
     if (!max_probe_size)
     {
         max_probe_size = PROBE_BUF_MAX;
@@ -629,6 +630,29 @@ int av_probe_input_buffer(AVIOContext *pb, AVInputFormat **fmt,
         old_dataoff = s->data_offset;
     else
         old_dataoff = 0;
+#ifdef dumpProbe
+			avio_seek(pb, oldoffset, SEEK_SET);
+			FILE *fp = fopen("/data/probeData.ts", "wb+");
+			char*allocbuf=av_mallocz(PROBE_BUF_MIN);
+			if ((ret = avio_read(pb, allocbuf, PROBE_BUF_MIN)) < 0) {
+				 if (ret != AVERROR_EOF && ret != AVERROR(EAGAIN))
+				 {
+				   //av_free(allocbuf);
+				 }
+				 fclose(fp);
+			} else {
+				 fwrite(allocbuf,2048, 1, fp);
+				 if (ferror(fp)){
+					av_log(NULL, AV_LOG_WARNING, "write error\n");
+					fclose(fp);
+				 }
+				 fflush(fp);
+				 fclose(fp);
+				 //av_free(allocbuf);
+			 }
+			 avio_seek(pb, oldoffset, SEEK_SET);
+#endif
+
     if (av_match_ext(filename, "ts") || av_match_ext(filename, "m2ts"))
     {
         probe_flag = 1;
